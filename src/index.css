@@ -2,41 +2,74 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+/* Cyberpunk WordWave Design System - Light Blue Neon Theme
 All colors MUST be HSL.
 */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Cyberpunk Color Palette */
+    --background: 222 28% 8%; /* Dark cyber background */
+    --foreground: 200 50% 95%; /* Light cyan text */
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    /* Brand Colors - Light Blue Neon */
+    --brand-50: 200 100% 95%; /* #eaf6ff */
+    --brand-500: 200 100% 62%; /* #3fb3ff */
+    --brand-600: 200 100% 56%; /* #1ea1ff */
+    --brand-700: 200 100% 45%;
+    
+    /* Neon Accents */
+    --neon-magenta: 320 85% 65%; /* #ff4db8 */
+    --neon-cyan: 180 100% 50%; /* #00ffff */
+    --neon-green: 120 100% 50%; /* #00ff00 */
+    
+    /* Glass Morphism */
+    --glass-bg: 200 50% 15% / 0.1;
+    --glass-border: 200 100% 62% / 0.2;
+    --glass-shadow: 200 100% 62% / 0.3;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    /* Component Tokens */
+    --card: 222 28% 12%; /* Darker panels */
+    --card-foreground: 200 50% 95%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --popover: 222 28% 15%;
+    --popover-foreground: 200 50% 95%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --primary: 200 100% 62%; /* Brand cyan */
+    --primary-foreground: 222 28% 8%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --secondary: 222 28% 18%;
+    --secondary-foreground: 200 50% 95%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --muted: 222 28% 15%;
+    --muted-foreground: 200 30% 70%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --accent: 320 85% 65%; /* Neon magenta */
+    --accent-foreground: 222 28% 8%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --destructive: 0 84% 65%;
+    --destructive-foreground: 200 50% 95%;
 
-    --radius: 0.5rem;
+    --border: 200 100% 62% / 0.2; /* Neon border with opacity */
+    --input: 222 28% 18%;
+    --ring: 200 100% 62%;
+
+    --radius: 1rem; /* Larger rounded corners */
+    
+    /* Animation Gradients */
+    --gradient-neon: linear-gradient(135deg, hsl(var(--brand-500)), hsl(var(--neon-magenta)));
+    --gradient-cyber: linear-gradient(180deg, hsl(222 28% 15%), hsl(222 28% 8%));
+    --gradient-glow: radial-gradient(circle, hsl(var(--brand-500) / 0.3), transparent 70%);
+    
+    /* Shadows */
+    --shadow-neon: 0 0 20px hsl(var(--brand-500) / 0.5);
+    --shadow-magenta: 0 0 20px hsl(var(--neon-magenta) / 0.5);
+    --shadow-glass: 0 8px 32px hsl(0 0% 0% / 0.4);
+    
+    /* Grid Animation */
+    --grid-size: 40px;
+    --grid-color: hsl(var(--brand-500) / 0.1);
+    --grid-glow: hsl(var(--brand-500) / 0.3);
 
     --sidebar-background: 0 0% 98%;
 
@@ -55,43 +88,116 @@ All colors MUST be HSL.
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+  /* Low Power Mode - Reduced animations and effects */
+  .low-power {
+    --grid-color: hsl(var(--brand-500) / 0.05);
+    --grid-glow: transparent;
+    --shadow-neon: 0 2px 8px hsl(var(--brand-500) / 0.2);
+    --shadow-magenta: 0 2px 8px hsl(var(--neon-magenta) / 0.2);
   }
+}
+
+/* Cyberpunk Grid Background Animation */
+.cyber-grid {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -1;
+  background-image: 
+    linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
+  animation: grid-float 20s ease-in-out infinite;
+}
+
+.cyber-grid::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--gradient-glow);
+  opacity: 0.1;
+  animation: grid-pulse 4s ease-in-out infinite alternate;
+}
+
+/* Grid Animations */
+@keyframes grid-float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(-2px, -2px) scale(1.005); }
+  50% { transform: translate(2px, -1px) scale(0.995); }
+  75% { transform: translate(-1px, 2px) scale(1.002); }
+}
+
+@keyframes grid-pulse {
+  0% { opacity: 0.05; }
+  100% { opacity: 0.15; }
+}
+
+/* Neon Glow Animation */
+@keyframes neon-glow {
+  0%, 100% { text-shadow: 0 0 5px currentColor, 0 0 10px currentColor; }
+  50% { text-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor; }
+}
+
+/* Word Reveal Animation */
+@keyframes word-reveal {
+  0% { 
+    opacity: 0; 
+    transform: translateY(-20px) scale(0.8);
+    text-shadow: 0 0 0 transparent;
+  }
+  50% {
+    opacity: 0.7;
+    transform: translateY(-5px) scale(1.1);
+  }
+  100% { 
+    opacity: 1; 
+    transform: translateY(0) scale(1);
+    text-shadow: 0 0 12px hsl(var(--brand-500) / 0.6);
+  }
+}
+
+/* Glass Panel Effect */
+.glass-panel {
+  background: hsl(var(--glass-bg));
+  backdrop-filter: blur(10px);
+  border: 1px solid hsl(var(--glass-border));
+  box-shadow: var(--shadow-glass);
+}
+
+.glass-panel:hover {
+  background: hsl(var(--glass-bg) / 0.15);
+  box-shadow: var(--shadow-glass), 0 0 20px hsl(var(--brand-500) / 0.1);
+}
+
+/* Neon Button Effects */
+.btn-neon {
+  background: linear-gradient(135deg, hsl(var(--brand-500) / 0.2), hsl(var(--brand-600) / 0.2));
+  border: 1px solid hsl(var(--brand-500) / 0.5);
+  box-shadow: 0 0 10px hsl(var(--brand-500) / 0.3);
+  transition: all 0.3s ease;
+}
+
+.btn-neon:hover {
+  background: linear-gradient(135deg, hsl(var(--brand-500) / 0.3), hsl(var(--brand-600) / 0.3));
+  box-shadow: var(--shadow-neon);
+  transform: translateY(-2px);
+}
+
+.btn-magenta {
+  background: linear-gradient(135deg, hsl(var(--neon-magenta) / 0.2), hsl(var(--neon-magenta) / 0.3));
+  border: 1px solid hsl(var(--neon-magenta) / 0.5);
+  box-shadow: 0 0 10px hsl(var(--neon-magenta) / 0.3);
+}
+
+.btn-magenta:hover {
+  box-shadow: var(--shadow-magenta);
+  transform: translateY(-2px);
 }
 
 @layer base {
@@ -100,6 +206,11 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
   }
 }
