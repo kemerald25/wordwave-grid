@@ -33,7 +33,7 @@ export function CyberGrid({ lowPowerMode = false, onToggleLowPower }: CyberGridP
       <div className="cyber-grid" />
       
       {/* Low Power Toggle */}
-      <div className="fixed top-4 right-4 z-50">
+      {/* <div className="fixed top-4 right-4 z-50">
         <Button
           variant="outline"
           size="sm"
@@ -44,7 +44,7 @@ export function CyberGrid({ lowPowerMode = false, onToggleLowPower }: CyberGridP
           <Settings className="w-3 h-3 mr-1" />
           {isLowPower ? "Low Power" : "Full FX"}
         </Button>
-      </div>
+      </div> */}
     </>
   );
 }
