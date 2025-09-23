@@ -95,6 +95,11 @@ All colors MUST be HSL.
     --shadow-neon: 0 2px 8px hsl(var(--brand-500) / 0.2);
     --shadow-magenta: 0 2px 8px hsl(var(--neon-magenta) / 0.2);
   }
+
+/* Safe area for mobile devices */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
 }
 
 /* Cyberpunk Grid Background Animation */
