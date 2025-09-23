@@ -2,6 +2,7 @@ import { Users, Clock, Trophy, Crown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
+import { GameRoom } from '@/hooks/useRooms';
 
 interface Player {
   id: string;
@@ -10,25 +11,14 @@ interface Player {
   isHost?: boolean;
 }
 
-interface Room {
-  id: string;
-  name: string;
-  hostName: string;
-  players: Player[];
-  maxPlayers: number;
-  roundTime: number;
-  status: 'lobby' | 'in_game' | 'finished';
-  createdAt: Date;
-}
-
 interface RoomCardProps {
-  room: Room;
+  room: GameRoom;
   onJoin: (roomId: string) => void;
   onView?: (roomId: string) => void;
 }
 
 export function RoomCard({ room, onJoin, onView }: RoomCardProps) {
-  const isJoinable = room.status === 'lobby' && room.players.length < room.maxPlayers;
+  const isJoinable = room.status === 'lobby' && room.players.length < room.max_players;
   const statusColors = {
     lobby: 'bg-brand-500',
     in_game: 'bg-neon-magenta',
@@ -56,7 +46,7 @@ export function RoomCard({ room, onJoin, onView }: RoomCardProps) {
             </h3>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Crown className="w-4 h-4 text-neon-magenta" />
-              <span>Host: {room.hostName}</span>
+              <span>Host: {room.host?.display_name || 'Unknown'}</span>
             </div>
           </div>
           
@@ -71,12 +61,12 @@ export function RoomCard({ room, onJoin, onView }: RoomCardProps) {
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Users className="w-4 h-4 text-brand-500" />
-            <span>{room.players.length}/{room.maxPlayers} players</span>
+            <span>{room.players.length}/{room.max_players} players</span>
           </div>
           
           <div className="flex items-center gap-2 text-muted-foreground">
             <Clock className="w-4 h-4 text-brand-500" />
-            <span>{room.roundTime}s rounds</span>
+            <span>{room.round_time_seconds}s rounds</span>
           </div>
         </div>
 
@@ -88,9 +78,9 @@ export function RoomCard({ room, onJoin, onView }: RoomCardProps) {
                 key={player.id}
                 className="w-8 h-8 rounded-full bg-gradient-neon border-2 border-background flex items-center justify-center text-xs font-bold text-black relative z-10"
                 style={{ zIndex: 10 - index }}
-                title={player.displayName}
+                title={player.display_name}
               >
-                {player.displayName.charAt(0).toUpperCase()}
+                {player.display_name.charAt(0).toUpperCase()}
               </div>
             ))}
             {room.players.length > 4 && (
