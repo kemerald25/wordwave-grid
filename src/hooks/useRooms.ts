@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/providers/AuthProvider';
-import { toast } from 'sonner';
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/providers/AuthProvider";
+import { toast } from "sonner";
 
 export interface GameRoom {
   id: string;
@@ -10,7 +10,7 @@ export interface GameRoom {
   max_players: number;
   round_time_seconds: number;
   rounds: number;
-  status: 'lobby' | 'in_game' | 'finished';
+  status: "lobby" | "in_game" | "finished";
   current_round: number;
   current_player_turn?: string;
   last_word?: string;
@@ -39,15 +39,15 @@ export function useRooms() {
   const [error, setError] = useState<string | null>(null);
   const { appUser } = useAuth();
 
-  const fetchRooms = async () => {
+  const fetchRooms = useCallback(async () => {
     try {
-      setIsLoading(true);
       setError(null);
 
       // Fetch rooms with host info and player counts
       const { data: roomsData, error: roomsError } = await supabase
-        .from('game_rooms')
-        .select(`
+        .from("game_rooms")
+        .select(
+          `
           *,
           host:users!game_rooms_host_id_fkey(display_name, avatar_url),
           players:game_players(
@@ -59,28 +59,34 @@ export function useRooms() {
             is_active,
             turn_order
           )
-        `)
-        .eq('status', 'lobby')
-        .order('created_at', { ascending: false });
+        `
+        )
+        .in("status", ["lobby", "in_game"])
+        .order("created_at", { ascending: false });
 
       if (roomsError) throw roomsError;
 
       // Type-safe mapping
-      const typedRooms: GameRoom[] = (roomsData || []).map(room => ({
+      const typedRooms: GameRoom[] = (roomsData || []).map((room) => ({
         ...room,
-        status: room.status as 'lobby' | 'in_game' | 'finished',
-        players: room.players || []
+        status: room.status as "lobby" | "in_game" | "finished",
+        players: (room.players || []).sort(
+          (a, b) => a.turn_order - b.turn_order
+        ),
       }));
 
       setRooms(typedRooms);
     } catch (err) {
-      console.error('Error fetching rooms:', err);
-      setError('Failed to load rooms');
-      toast.error('Failed to load rooms');
+      console.error("Error fetching rooms:", err);
+      setError("Failed to load rooms");
+      if (!isLoading) {
+        // Only show toast if not initial load
+        toast.error("Failed to load rooms");
+      }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isLoading]);
 
   const createRoom = async (roomData: {
     name: string;
@@ -89,20 +95,20 @@ export function useRooms() {
     rounds: number;
   }) => {
     if (!appUser) {
-      toast.error('Please sign in to create a room');
+      toast.error("Please sign in to create a room");
       return null;
     }
 
     try {
       const { data: room, error } = await supabase
-        .from('game_rooms')
+        .from("game_rooms")
         .insert({
           name: roomData.name,
           host_id: appUser.id,
           max_players: roomData.maxPlayers,
           round_time_seconds: roomData.roundTime,
           rounds: roomData.rounds,
-          status: 'lobby'
+          status: "lobby",
         })
         .select()
         .single();
@@ -111,85 +117,94 @@ export function useRooms() {
 
       // Add the host as a player
       const { error: playerError } = await supabase
-        .from('game_players')
+        .from("game_players")
         .insert({
           room_id: room.id,
           user_id: appUser.id,
-          display_name: appUser.display_name || 'Player',
+          display_name: appUser.display_name || "Player",
           avatar_url: appUser.avatar_url,
-          turn_order: 0
+          turn_order: 0,
+          score: 0,
+          is_active: true,
         });
 
       if (playerError) throw playerError;
 
-      toast.success('Room created successfully!');
-      fetchRooms(); // Refresh the rooms list
+      toast.success("Room created successfully!");
+      await fetchRooms(); // Refresh the rooms list
       return room.id;
     } catch (err) {
-      console.error('Error creating room:', err);
-      toast.error('Failed to create room');
+      console.error("Error creating room:", err);
+      toast.error("Failed to create room");
       return null;
     }
   };
 
   const joinRoom = async (roomId: string) => {
     if (!appUser) {
-      toast.error('Please sign in to join a room');
+      toast.error("Please sign in to join a room");
       return false;
     }
 
     try {
       // Check if room exists and has space
-      const { data: room } = await supabase
-        .from('game_rooms')
-        .select('*, players:game_players(count)')
-        .eq('id', roomId)
-        .eq('status', 'lobby')
+      const { data: room, error: roomError } = await supabase
+        .from("game_rooms")
+        .select(
+          `
+          *,
+          players:game_players(count)
+        `
+        )
+        .eq("id", roomId)
+        .eq("status", "lobby")
         .single();
 
+      if (roomError) throw roomError;
+
       if (!room) {
-        toast.error('Room not found or no longer available');
+        toast.error("Room not found or no longer available");
         return false;
       }
 
       const playerCount = room.players?.[0]?.count || 0;
       if (playerCount >= room.max_players) {
-        toast.error('Room is full');
+        toast.error("Room is full");
         return false;
       }
 
       // Check if already in room
       const { data: existingPlayer } = await supabase
-        .from('game_players')
-        .select('id')
-        .eq('room_id', roomId)
-        .eq('user_id', appUser.id)
+        .from("game_players")
+        .select("id")
+        .eq("room_id", roomId)
+        .eq("user_id", appUser.id)
         .single();
 
       if (existingPlayer) {
-        toast.info('You are already in this room');
+        toast.info("You are already in this room");
         return true;
       }
 
       // Add player to room
-      const { error } = await supabase
-        .from('game_players')
-        .insert({
-          room_id: roomId,
-          user_id: appUser.id,
-          display_name: appUser.display_name || 'Player',
-          avatar_url: appUser.avatar_url,
-          turn_order: playerCount
-        });
+      const { error } = await supabase.from("game_players").insert({
+        room_id: roomId,
+        user_id: appUser.id,
+        display_name: appUser.display_name || "Player",
+        avatar_url: appUser.avatar_url,
+        turn_order: playerCount,
+        score: 0,
+        is_active: true,
+      });
 
       if (error) throw error;
 
-      toast.success('Joined room successfully!');
-      fetchRooms();
+      toast.success("Joined room successfully!");
+      await fetchRooms();
       return true;
     } catch (err) {
-      console.error('Error joining room:', err);
-      toast.error('Failed to join room');
+      console.error("Error joining room:", err);
+      toast.error("Failed to join room");
       return false;
     }
   };
@@ -198,23 +213,40 @@ export function useRooms() {
   useEffect(() => {
     fetchRooms();
 
-    // Subscribe to room changes
+    // Subscribe to room changes with more specific filters
     const roomsSubscription = supabase
-      .channel('rooms-changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'game_rooms' },
-        () => fetchRooms()
+      .channel("rooms-lobby-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "game_rooms",
+          filter: "status=in.(lobby,in_game)",
+        },
+        (payload) => {
+          console.log("Room change detected:", payload);
+          fetchRooms();
+        }
       )
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'game_players' },
-        () => fetchRooms()
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "game_players",
+        },
+        (payload) => {
+          console.log("Player change detected:", payload);
+          fetchRooms();
+        }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(roomsSubscription);
     };
-  }, []);
+  }, [fetchRooms]);
 
   return {
     rooms,
@@ -222,6 +254,6 @@ export function useRooms() {
     error,
     fetchRooms,
     createRoom,
-    joinRoom
+    joinRoom,
   };
 }
