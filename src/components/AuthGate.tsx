@@ -1,8 +1,8 @@
-import { motion } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { useAuth } from '@/providers/AuthProvider';
-import { Users, Wallet, Zap, ArrowRight } from 'lucide-react';
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { useAuth } from "@/providers/AuthProvider";
+import { Users, Wallet, Zap, ArrowRight } from "lucide-react";
 
 interface AuthGateProps {
   children: React.ReactNode;
@@ -12,14 +12,21 @@ interface AuthGateProps {
   description?: string;
 }
 
-export function AuthGate({ 
-  children, 
-  showGuestOption = true, 
+export function AuthGate({
+  children,
+  showGuestOption = true,
   requireAuth = false,
   title = "Join the WordWave Revolution",
-  description = "Connect your identity to save progress, compete on leaderboards, and unlock exclusive features."
+  description = "Connect your identity to save progress, compete on leaderboards, and unlock exclusive features.",
 }: AuthGateProps) {
-  const { isAuthenticated, isLoading, signInAsGuest, signInWithSIWF, signInWithWallet, miniKitUser } = useAuth();
+  const {
+    isAuthenticated,
+    isLoading,
+    signInAsGuest,
+    signInWithSIWF,
+    signInWithWallet,
+    miniKitUser,
+  } = useAuth();
 
   // Show loading state
   if (isLoading) {
