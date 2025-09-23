@@ -1,0 +1,49 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjkwMDU4NCwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDZmOUFkMWNkM0RjRjI3MUM2OTY0ZDA2NThkYjU2QjM2ZDYyNDYxM2IifQ",
+    "payload": "eyJkb21haW4iOiJ3b3Jkd2F2ZS1nYW1lLnZlcmNlbC5hcHAifQ",
+    "signature": "MHgzOWUzZmEyYjQxZDU1NTA4MmYxMmE4MTQyNWYzZjVmODY5YzA1M2RiMTY5Mjk4NGZmM2E3ZmQyNDgzMDcyZmQ1MzU0MDQyYjFlMjBjMmU0OTIwNWRkOWU1ZGVhZTIyYzcwODYwMzQyZDJjMjA1NGI4Mzk2MTE0NWQzZjA2MjU4ODFj"
+  },
+  "frame": {
+    "name": "WordWave",
+    "version": "1",
+    "iconUrl": "https://wordwave-game.vercel.app/logo.png",
+    "homeUrl": "https://wordwave-game.vercel.app/",
+    "imageUrl": "https://wordwave-game.vercel.app/logo.png",
+    "buttonTitle": "⚡ Start Chaining",
+    "splashImageUrl": "https://wordwave-game.vercel.app/logo.png",
+    "splashBackgroundColor": "#6366F1",
+    "webhookUrl": "https://wordwave-game.vercel.app/api/webhook",
+    "subtitle": "Chain Words. Win ETH.",
+    "description": "WordWave: Real-time word chain battles where vocabulary meets strategy. Challenge friends, climb leaderboards, win rewards.",
+    "screenshotUrls": [
+      "https://wordwave-game.vercel.app/logo.png",
+      "https://wordwave-game.vercel.app/logo.png"
+    ],
+    "primaryCategory": "games",
+    "tags": [
+      "word",
+      "puzzle", 
+      "social",
+      "multiplayer",
+      "competitive"
+    ],
+    "heroImageUrl": "https://wordwave-game.vercel.app/logo.png",
+    "tagline": "Build Chains. Battle Friends.",
+    "ogTitle": "WordWave - Social Word Game",
+    "ogDescription": "Real-time word battles on Base",
+    "ogImageUrl": "https://wordwave-game.vercel.app/logo.png",
+    "requiredChains": [
+      "eip155:8453"
+    ]
+  },
+  "requiredCapabilities": [
+    "actions.signIn",
+    "wallet.getEthereumProvider"
+  ],
+  "baseBuilder": {
+    "allowedAddresses": [
+      "0x864c0A504da4ef27EE12b8197780e7067133587b"
+    ]
+  }
+}
