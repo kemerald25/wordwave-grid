@@ -1,8 +1,8 @@
 {
   "accountAssociation": {
     "header": "eyJmaWQiOjkwMDU4NCwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDZmOUFkMWNkM0RjRjI3MUM2OTY0ZDA2NThkYjU2QjM2ZDYyNDYxM2IifQ",
-    "payload": "eyJkb21haW4iOiJ3b3Jkd2F2ZS1nYW1lLnZlcmNlbC5hcHAifQ",
-    "signature": "MHhjMTYzNDUyNzY1NTZlZTgzYmE5YTRkYzk4Njk2MjIzZTk5ZTlmNTliZDVjZGE2NTkxOWNlNTlkNTgwNGU5ZjEwNzQ5YmNlZmY3NzYxM2I4YzNjZjBmOTczOWM1OThjNGVmMzkzZTJiMDEyNDQzMTBjZmRlODJhMDI5ODhkZjY5YzFj"
+    "payload": "eyJkb21haW4iOiJ3b3Jkd2F2ZS1ncmlkLnZlcmNlbC5hcHAifQ",
+    "signature": "MHhlNGE3MzQzNWZhZGM4NzQ0ZmUxNjNmODUwMjY0NTE5ZmQ4MmI0ODZiYTgzNzBlMTU2MTRlMDFiZWViYmU5N2VjNTQwMWY1YzIwZGJhMDY1MDRmZmYxMDcxYWNiMTIzZTAwMTU5MzVhOTdkNjg2NzIyYzZkOTFjMGE2MDg4YTZjZjFi"
   },
   "frame": {
     "name": "WordWave",
