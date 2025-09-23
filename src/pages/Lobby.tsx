@@ -23,7 +23,8 @@ export default function Lobby() {
     const roomId = await createRoom(roomData);
     if (roomId) {
       setShowCreateModal(false);
-      // Navigate to room or show success
+      // Navigate to room
+      navigate(`/room/${roomId}`);
     }
   };
 
@@ -31,13 +32,13 @@ export default function Lobby() {
     const success = await joinRoom(roomId);
     if (success) {
       // Navigate to room
-      console.log('Successfully joined room:', roomId);
+      navigate(`/room/${roomId}`);
     }
   };
 
   const handleViewRoom = (roomId: string) => {
-    console.log('Viewing room:', roomId);
     // Navigate to spectate room
+    navigate(`/room/${roomId}`);
   };
 
   const handleRefresh = async () => {
