@@ -213,7 +213,7 @@ export function useRooms() {
   useEffect(() => {
     fetchRooms();
 
-    // Subscribe to room changes with more specific filters
+    // Subscribe to room changes with more specific filters and immediate updates
     const roomsSubscription = supabase
       .channel("rooms-lobby-changes")
       .on(
@@ -226,7 +226,28 @@ export function useRooms() {
         },
         (payload) => {
           console.log("Room change detected:", payload);
-          fetchRooms();
+          // Immediate update for better responsiveness
+          if (payload.eventType === "UPDATE" && payload.new) {
+            setRooms((prev) =>
+              prev.map((room) =>
+                room.id === payload.new.id
+                  ? {
+                      ...room,
+                      ...payload.new,
+                      status: payload.new.status as
+                        | "lobby"
+                        | "in_game"
+                        | "finished",
+                    }
+                  : room
+              )
+            );
+          } else if (payload.eventType === "INSERT" && payload.new) {
+            // Add new room immediately
+            fetchRooms();
+          }
+          // Still do full fetch for complete data
+          setTimeout(fetchRooms, 200);
         }
       )
       .on(
@@ -238,6 +259,7 @@ export function useRooms() {
         },
         (payload) => {
           console.log("Player change detected:", payload);
+          // Immediate refresh for player changes - these are critical for lobby display
           fetchRooms();
         }
       )

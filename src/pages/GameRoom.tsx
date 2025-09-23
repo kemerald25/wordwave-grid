@@ -164,7 +164,43 @@ export default function GameRoom() {
         },
         (payload) => {
           console.log("Room update:", payload);
-          fetchRoom();
+          // Immediate state updates for better sync
+          if (payload.eventType === "UPDATE" && payload.new) {
+            const updatedRoom = payload.new;
+            setRoom((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    ...updatedRoom,
+                    status: updatedRoom.status as
+                      | "lobby"
+                      | "in_game"
+                      | "finished",
+                  }
+                : null
+            );
+
+            // Update game state immediately
+            if (updatedRoom.status === "in_game" && !gameStarted) {
+              setGameStarted(true);
+            }
+
+            // Update turn state immediately
+            if (updatedRoom.current_player_turn && appUser) {
+              const myTurn = updatedRoom.current_player_turn === appUser.id;
+              setIsMyTurn(myTurn);
+              if (myTurn && gameStarted) {
+                startTurnTimer();
+              }
+            }
+
+            // Update current word immediately
+            if (updatedRoom.last_word !== currentWord) {
+              setCurrentWord(updatedRoom.last_word || "");
+            }
+          }
+          // Still fetch for complete data
+          setTimeout(fetchRoom, 100);
         }
       )
       .on(
@@ -177,6 +213,7 @@ export default function GameRoom() {
         },
         (payload) => {
           console.log("Players update:", payload);
+          // Immediate refresh for player changes
           fetchRoom();
         }
       )
@@ -230,7 +267,18 @@ export default function GameRoom() {
     }
 
     try {
-      const firstPlayer = room.players.find((p) => p.turn_order === 0);
+      // Find the first non-host player to go first
+      const firstPlayer =
+        room.players.find(
+          (p) =>
+            p.user_id !== room.host_id &&
+            p.turn_order ===
+              Math.min(
+                ...room.players
+                  .filter((p) => p.user_id !== room.host_id)
+                  .map((p) => p.turn_order)
+              )
+        ) || room.players[1]; // Fallback to second player if no non-host found
 
       // Start the game
       const { error } = await supabase
@@ -240,6 +288,7 @@ export default function GameRoom() {
           started_at: new Date().toISOString(),
           current_round: 1,
           current_player_turn: firstPlayer?.user_id,
+          last_word: null, // Ensure we start with no word
         })
         .eq("id", roomId);
 
@@ -254,6 +303,15 @@ export default function GameRoom() {
 
       toast.success("Game started!");
       setGameStarted(true);
+      setCurrentWord(""); // Clear any previous word
+
+      // Set turn state immediately for better UX
+      if (firstPlayer?.user_id === appUser.id) {
+        setIsMyTurn(true);
+        startTurnTimer();
+      } else {
+        setIsMyTurn(false);
+      }
     } catch (error) {
       console.error("Error starting game:", error);
       toast.error("Failed to start game");
@@ -681,11 +739,18 @@ export default function GameRoom() {
                   ) : (
                     <div className="text-center">
                       <div className="text-6xl text-muted-foreground mb-2">
-                        ⚡
+                        🎯
                       </div>
-                      <div className="text-xl text-muted-foreground">
-                        Waiting for first word...
+                      <div className="text-xl text-muted-foreground mb-2">
+                        {isMyTurn
+                          ? "Start with any word!"
+                          : "Waiting for first word..."}
                       </div>
+                      {isMyTurn && (
+                        <div className="text-sm text-muted-foreground">
+                          You can start with any word
+                        </div>
+                      )}
                     </div>
                   )}
                 </AnimatePresence>
@@ -700,10 +765,14 @@ export default function GameRoom() {
                 >
                   <WordInput
                     onSubmit={handleWordSubmit}
-                    placeholder="Enter your word..."
+                    placeholder={
+                      !currentWord
+                        ? "Start with any word..."
+                        : "Enter your word..."
+                    }
                     lastWord={currentWord}
                     requiredStartLetter={getRequiredStartLetter()}
-                    showHint={true}
+                    showHint={!!currentWord} // Only show hint after first word
                     disabled={isSubmitting}
                   />
                 </motion.div>
