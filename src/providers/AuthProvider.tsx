@@ -65,11 +65,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [miniKitProcessed, setMiniKitProcessed] = useState(false);
 
   // MiniKit integration
   const miniKit = useMiniKit();
   const miniKitUser = miniKit?.context?.user;
   const miniKitClient = miniKit?.context?.client;
+
+  // Auto-authenticate with MiniKit when user is available
+  useEffect(() => {
+    const autoAuthWithMiniKit = async () => {
+      if (miniKitUser && !miniKitProcessed && !isLoading) {
+        console.log("Auto-authenticating with MiniKit user:", miniKitUser);
+        setMiniKitProcessed(true);
+
+        try {
+          await createOrLoadFarcasterUser(miniKitUser);
+        } catch (error) {
+          console.error("Auto MiniKit auth failed:", error);
+          // Fallback to guest if MiniKit auth fails
+          setIsLoading(false);
+        }
+      }
+    };
+
+    autoAuthWithMiniKit();
+  }, [miniKitUser, miniKitProcessed, isLoading]);
 
   useEffect(() => {
     // Set up auth state listener
@@ -83,8 +104,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await loadAppUser(supabaseSession.user.id);
       } else {
         setUser(null);
-        setAppUser(null);
-        setSession(null);
+        // Don't clear appUser/session here if we have MiniKit user
+        if (!miniKitUser) {
+          setAppUser(null);
+          setSession(null);
+        }
       }
     });
 
@@ -98,15 +122,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setIsLoading(false);
           });
         } else {
-          // Check for guest session in localStorage
+          // Check for guest session in localStorage, but don't finish loading yet
+          // Let MiniKit check happen first
           checkGuestSession().then(() => {
-            setIsLoading(false);
+            // Only set loading to false if no MiniKit user is expected
+            if (!miniKitUser) {
+              setIsLoading(false);
+            }
           });
         }
       });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const createOrLoadFarcasterUser = async (farcasterUser: any) => {
+    try {
+      setIsLoading(true);
+
+      // Check if user already exists by FID
+      const { data: existingUser } = await supabase
+        .from("users")
+        .select("*")
+        .eq("farcaster_fid", farcasterUser.fid?.toString())
+        .single();
+
+      if (existingUser) {
+        // User exists, load them
+        setAppUser(existingUser);
+        setSession({
+          id: "minikit-session",
+          user_id: existingUser.id,
+          session_token: `minikit_${farcasterUser.fid}`,
+          auth_type: "siwf",
+          farcaster_fid: farcasterUser.fid?.toString(),
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          is_active: true,
+        });
+      } else {
+        // Create new Farcaster user
+        const userData = {
+          farcaster_fid: farcasterUser.fid?.toString(),
+          handle: farcasterUser.username,
+          display_name:
+            farcasterUser.displayName ||
+            farcasterUser.username ||
+            "Farcaster User",
+          avatar_url: farcasterUser.pfpUrl,
+          is_guest: false,
+        };
+
+        const { data: newUser, error } = await supabase
+          .from("users")
+          .insert(userData)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setAppUser(newUser);
+        setSession({
+          id: "minikit-session",
+          user_id: newUser.id,
+          session_token: `minikit_${farcasterUser.fid}`,
+          auth_type: "siwf",
+          farcaster_fid: farcasterUser.fid?.toString(),
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          is_active: true,
+        });
+
+        toast.success(`Welcome ${userData.display_name}! 🎉`);
+      }
+    } catch (error) {
+      console.error("Error creating/loading Farcaster user:", error);
+      toast.error("Failed to authenticate with Farcaster");
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const checkGuestSession = async () => {
     const guestSessionId = localStorage.getItem("wordwave_guest_session");
@@ -232,8 +326,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithSIWF = async () => {
     try {
       setIsLoading(true);
-      toast.info("Sign In with Farcaster coming soon!");
-      // TODO: Implement SIWF using OnchainKit
+
+      if (miniKitUser) {
+        // If MiniKit user is available, use it directly
+        await createOrLoadFarcasterUser(miniKitUser);
+      } else {
+        toast.info("Sign In with Farcaster coming soon!");
+        // TODO: Implement SIWF using OnchainKit without MiniKit
+      }
     } catch (error) {
       console.error("SIWF error:", error);
       toast.error("Failed to sign in with Farcaster");
@@ -271,6 +371,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setAppUser(null);
       setSession(null);
+      setMiniKitProcessed(false);
 
       toast.success("Signed out successfully");
     } catch (error) {
@@ -281,7 +382,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const isAuthenticated = Boolean(user || appUser?.is_guest);
+  const isAuthenticated = Boolean(user || appUser);
   const isGuest = Boolean(appUser?.is_guest);
 
   return (
