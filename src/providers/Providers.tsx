@@ -24,7 +24,7 @@ export function Providers({ children }: ProvidersProps) {
             theme: 'cyberpunk'
           }
         }}
-        miniapp={{enabled: true}}
+        miniKit={{enabled: true}}
       >
         <AuthProvider>
           <TooltipProvider>
