@@ -37,7 +37,7 @@ export function Layout({ children, title, subtitle, showHeader = true }: LayoutP
           </div>
         </main>
         
-        <footer className="p-4 text-center text-sm text-muted-foreground pb-[80px]">
+        <footer className="p-4 text-center text-sm text-muted-foreground pb-[120px]">
           <div className="glass-panel inline-block px-4 py-2 rounded-lg">
             WordWave • Chain Reaction Word Game
           </div>
