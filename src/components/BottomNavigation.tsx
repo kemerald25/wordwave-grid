@@ -17,7 +17,7 @@ const navItems = [
     color: 'text-neon-magenta'
   },
   {
-    path: '/demo',
+    path: '/solo',
     icon: Target,
     label: 'Solo',
     color: 'text-neon-green'
