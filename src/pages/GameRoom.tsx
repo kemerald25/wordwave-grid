@@ -71,124 +71,156 @@ export default function GameRoom() {
   const [lastSubmittedWord, setLastSubmittedWord] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [typingPlayers, setTypingPlayers] = useState<Set<string>>(new Set());
+  const [hasShownGameStartedToast, setHasShownGameStartedToast] =
+    useState(false); // Track if we've shown the toast
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const { validateWord } = useExternalDictionary();
   const { shareGameInvite, shareGameResult } = useGameSharing();
   const { notifyPlayerJoined, notifyGameStarted } = useGameNotifications();
 
   // Enhanced real-time synchronization with immediate state updates
-  const { broadcastUpdate, broadcastTyping, forceRefresh, isConnected } = useGameSync({
-    roomId: roomId || "",
-    onRoomUpdate: (updatedRoom) => {
-      console.log("🎮 Room updated via sync:", updatedRoom);
-      
-      // Immediately update room state
-      setRoom(updatedRoom);
+  const { broadcastUpdate, broadcastTyping, forceRefresh, isConnected } =
+    useGameSync({
+      roomId: roomId || "",
+      onRoomUpdate: (updatedRoom) => {
+        console.log("🎮 Room updated via sync:", updatedRoom);
 
-      // Handle game state changes with immediate feedback
-      if (updatedRoom.status === "in_game" && !gameStarted) {
-        setGameStarted(true);
-        toast.success("Game started! 🎮");
-      }
+        // Immediately update room state
+        setRoom(updatedRoom);
 
-      // Handle turn changes with immediate feedback
-      if (updatedRoom.current_player_turn && appUser) {
-        const myTurn = updatedRoom.current_player_turn === appUser.id;
-        const wasMyTurn = isMyTurn;
-        
-        // Update turn state immediately
-        setIsMyTurn(myTurn);
-
-        if (myTurn && gameStarted && !wasMyTurn) {
-          toast.info("It's your turn! ⚡");
-          startTurnTimer(updatedRoom.round_time_seconds);
-        } else if (!myTurn && timerRef.current) {
-          clearInterval(timerRef.current);
-          setTimeLeft(0);
+        // Handle game state changes with immediate feedback
+        // Only show toast if game just started (not when joining an already started game)
+        if (
+          updatedRoom.status === "in_game" &&
+          !gameStarted &&
+          !hasShownGameStartedToast
+        ) {
+          setGameStarted(true);
+          setHasShownGameStartedToast(true);
+          toast.success("Game started! 🎮", {
+            position: "top-center",
+          });
+        } else if (updatedRoom.status === "in_game" && !gameStarted) {
+          // Game was already started, just update state without toast
+          setGameStarted(true);
+          setHasShownGameStartedToast(true);
         }
-      }
 
-      // Handle word updates with immediate feedback
-      if (updatedRoom.last_word !== currentWord) {
-        const newWord = updatedRoom.last_word || "";
-        console.log("🔄 Word updated:", currentWord, "->", newWord);
-        setCurrentWord(newWord);
-        
-        // If there's a new word and it's different, show reveal animation
-        if (newWord && newWord !== currentWord && newWord !== lastSubmittedWord) {
-          setLastSubmittedWord(newWord);
+        // Handle turn changes with immediate feedback
+        if (updatedRoom.current_player_turn && appUser) {
+          const myTurn = updatedRoom.current_player_turn === appUser.id;
+          const wasMyTurn = isMyTurn;
+
+          // Update turn state immediately
+          setIsMyTurn(myTurn);
+
+          if (myTurn && gameStarted && !wasMyTurn) {
+            toast.info("It's your turn! ⚡", {
+              position: "top-center",
+            });
+            startTurnTimer(updatedRoom.round_time_seconds);
+          } else if (!myTurn && timerRef.current) {
+            clearInterval(timerRef.current);
+            setTimeLeft(0);
+          }
+        }
+
+        // Handle word updates with immediate feedback
+        if (updatedRoom.last_word !== currentWord) {
+          const newWord = updatedRoom.last_word || "";
+          console.log("🔄 Word updated:", currentWord, "->", newWord);
+          setCurrentWord(newWord);
+
+          // If there's a new word and it's different, show reveal animation
+          if (
+            newWord &&
+            newWord !== currentWord &&
+            newWord !== lastSubmittedWord
+          ) {
+            setLastSubmittedWord(newWord);
+            setShowWordReveal(true);
+
+            // Auto-hide reveal after animation
+            setTimeout(() => {
+              setShowWordReveal(false);
+            }, 2000);
+          }
+        }
+      },
+      onPlayerUpdate: (players) => {
+        console.log("👥 Players updated via sync:", players);
+        setRoom((prev) => (prev ? { ...prev, players } : null));
+      },
+      onMoveUpdate: (move) => {
+        console.log("🎯 Move updated via sync:", move);
+
+        if (move.is_valid && move.word) {
+          // Immediately update the word state
+          setCurrentWord(move.word);
+          setLastSubmittedWord(move.word);
           setShowWordReveal(true);
-          
-          // Auto-hide reveal after animation
+
+          // Show points awarded toast for the player who made the move (at top)
+          if (move.user_id === appUser?.id && move.points_awarded) {
+            toast.success(`+${move.points_awarded} points!`, {
+              position: "top-center",
+            });
+          }
+
+          // Auto-hide reveal animation
           setTimeout(() => {
             setShowWordReveal(false);
           }, 2000);
+        } else if (move.user_id === appUser?.id && !move.is_valid) {
+          toast.error(
+            `Invalid word: ${move.validation_reason?.replace("_", " ")}`,
+            {
+              position: "top-center",
+            }
+          );
         }
-      }
-    },
-    onPlayerUpdate: (players) => {
-      console.log("👥 Players updated via sync:", players);
-      setRoom((prev) => (prev ? { ...prev, players } : null));
-    },
-    onMoveUpdate: (move) => {
-      console.log("🎯 Move updated via sync:", move);
-      
-      if (move.is_valid && move.word) {
-        // Immediately update the word state
-        setCurrentWord(move.word);
-        setLastSubmittedWord(move.word);
-        setShowWordReveal(true);
+      },
+      onPlayerJoin: async (player) => {
+        console.log("🆕 Player joined via sync:", player);
 
-        // Show points awarded toast for the player who made the move
-        if (move.user_id === appUser?.id && move.points_awarded) {
-          toast.success(`+${move.points_awarded} points!`);
+        if (room && appUser?.id !== player.user_id) {
+          toast.success(`${player.display_name} joined!`, {
+            position: "top-center",
+          });
+          await notifyPlayerJoined(room.id, room.name, player.display_name);
         }
-        
-        // Auto-hide reveal animation
-        setTimeout(() => {
-          setShowWordReveal(false);
-        }, 2000);
-      } else if (move.user_id === appUser?.id && !move.is_valid) {
-        toast.error(`Invalid word: ${move.validation_reason?.replace("_", " ")}`);
-      }
-    },
-    onPlayerJoin: async (player) => {
-      console.log("🆕 Player joined via sync:", player);
-      
-      if (room && appUser?.id !== player.user_id) {
-        toast.success(`${player.display_name} joined!`);
-        await notifyPlayerJoined(room.id, room.name, player.display_name);
-      }
-    },
-    onPlayerLeave: (playerId) => {
-      console.log("👋 Player left via sync:", playerId);
-      toast.info("Player left the game");
-    },
-    onGameStateChange: (gameState) => {
-      console.log("🔄 Complete game state updated via sync");
-      // Additional game state handling if needed
-    },
-    onTypingUpdate: (isTyping, playerName) => {
-      if (isTyping && playerName && playerName !== appUser?.display_name) {
-        setTypingPlayers(prev => new Set([...prev, playerName]));
-        
-        // Auto-clear typing indicator after 3 seconds
-        setTimeout(() => {
-          setTypingPlayers(prev => {
+      },
+      onPlayerLeave: (playerId) => {
+        console.log("👋 Player left via sync:", playerId);
+        toast.info("Player left the game", {
+          position: "top-center",
+        });
+      },
+      onGameStateChange: (gameState) => {
+        console.log("🔄 Complete game state updated via sync");
+        // Additional game state handling if needed
+      },
+      onTypingUpdate: (isTyping, playerName) => {
+        if (isTyping && playerName && playerName !== appUser?.display_name) {
+          setTypingPlayers((prev) => new Set([...prev, playerName]));
+
+          // Auto-clear typing indicator after 3 seconds
+          setTimeout(() => {
+            setTypingPlayers((prev) => {
+              const newSet = new Set(prev);
+              newSet.delete(playerName);
+              return newSet;
+            });
+          }, 3000);
+        } else if (playerName) {
+          setTypingPlayers((prev) => {
             const newSet = new Set(prev);
             newSet.delete(playerName);
             return newSet;
           });
-        }, 3000);
-      } else if (playerName) {
-        setTypingPlayers(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(playerName);
-          return newSet;
-        });
-      }
-    },
-  });
+        }
+      },
+    });
 
   useEffect(() => {
     if (!roomId) {
@@ -253,7 +285,12 @@ export default function GameRoom() {
       };
 
       setRoom(typedRoom);
-      setGameStarted(typedRoom.status === "in_game");
+
+      // If game is already in progress, don't show the "Game started" toast
+      if (typedRoom.status === "in_game") {
+        setGameStarted(true);
+        setHasShownGameStartedToast(true); // Mark as already shown
+      }
 
       // Check if it's the current user's turn
       if (typedRoom.current_player_turn && appUser) {
@@ -274,7 +311,9 @@ export default function GameRoom() {
       }
     } catch (error) {
       console.error("Error fetching room:", error);
-      toast.error("Failed to load room");
+      toast.error("Failed to load room", {
+        position: "top-center",
+      });
       navigate("/lobby");
     } finally {
       setIsLoading(false);
@@ -283,12 +322,16 @@ export default function GameRoom() {
 
   const startGame = async () => {
     if (!room || !appUser || room.host_id !== appUser.id) {
-      toast.error("Only the host can start the game");
+      toast.error("Only the host can start the game", {
+        position: "top-center",
+      });
       return;
     }
 
     if (room.players.length < 2) {
-      toast.error("Need at least 2 players to start");
+      toast.error("Need at least 2 players to start", {
+        position: "top-center",
+      });
       return;
     }
 
@@ -316,6 +359,7 @@ export default function GameRoom() {
       };
       setRoom(updatedRoom);
       setGameStarted(true);
+      setHasShownGameStartedToast(true); // Mark that we're showing the toast
       setCurrentWord("");
 
       if (firstPlayer?.user_id === appUser.id) {
@@ -346,7 +390,9 @@ export default function GameRoom() {
         started_at: new Date().toISOString(),
       });
 
-      toast.success("Game started!");
+      toast.success("Game started!", {
+        position: "top-center",
+      });
 
       // Broadcast the game start
       broadcastUpdate("game_started", {
@@ -356,13 +402,15 @@ export default function GameRoom() {
 
       // Notify all players
       await notifyGameStarted(roomId, room.name);
-
     } catch (error) {
       console.error("Error starting game:", error);
-      toast.error("Failed to start game");
-      
+      toast.error("Failed to start game", {
+        position: "top-center",
+      });
+
       // Revert optimistic update on error
       setGameStarted(false);
+      setHasShownGameStartedToast(false);
       if (room) {
         setRoom({ ...room, status: "lobby" });
       }
@@ -398,7 +446,9 @@ export default function GameRoom() {
 
     // Move to next player without awarding points
     await nextTurn();
-    toast.warning("Time's up! Moving to next player.");
+    toast.warning("Time's up! Moving to next player.", {
+      position: "top-center",
+    });
   };
 
   const nextTurn = async () => {
@@ -444,7 +494,9 @@ export default function GameRoom() {
     // Prevent empty submissions
     const trimmedWord = word.trim();
     if (!trimmedWord) {
-      toast.error("Please enter a word");
+      toast.error("Please enter a word", {
+        position: "top-center",
+      });
       return;
     }
 
@@ -457,7 +509,9 @@ export default function GameRoom() {
       const validation = await validateWord(trimmedWord);
 
       if (!validation.isValid) {
-        toast.error(validation.error || "Invalid word");
+        toast.error(validation.error || "Invalid word", {
+          position: "top-center",
+        });
         setIsSubmitting(false);
         return;
       }
@@ -470,17 +524,21 @@ export default function GameRoom() {
           .eq("room_id", roomId)
           .is("ended_at", null)
           .single(),
-        Promise.resolve(room.players.find((p) => p.user_id === appUser.id))
+        Promise.resolve(room.players.find((p) => p.user_id === appUser.id)),
       ]);
 
       if (!roundResult.data) {
-        toast.error("No active round found");
+        toast.error("No active round found", {
+          position: "top-center",
+        });
         setIsSubmitting(false);
         return;
       }
 
       if (!playerResult) {
-        toast.error("Player not found");
+        toast.error("Player not found", {
+          position: "top-center",
+        });
         setIsSubmitting(false);
         return;
       }
@@ -548,25 +606,27 @@ export default function GameRoom() {
         setCurrentWord(trimmedWord);
         setLastSubmittedWord(trimmedWord);
         setShowWordReveal(true);
-        
+
         // Update room state
-        const updatedPlayers = room.players.map(p => 
+        const updatedPlayers = room.players.map((p) =>
           p.user_id === appUser.id ? { ...p, score: p.score + points } : p
         );
-        
+
         const updatedRoom = {
           ...room,
           last_word: trimmedWord,
           current_player_turn: nextPlayer.user_id,
           players: updatedPlayers,
         };
-        
+
         setRoom(updatedRoom);
         setIsMyTurn(false);
-        
-        // Show points toast immediately
+
+        // Show points toast immediately at top
         if (points > 0) {
-          toast.success(`+${points} points!`);
+          toast.success(`+${points} points!`, {
+            position: "top-center",
+          });
         }
 
         // Auto-hide reveal animation
@@ -602,12 +662,14 @@ export default function GameRoom() {
         }),
 
         // Update player score if valid
-        ...(isValid ? [
-          supabase
-            .from("game_players")
-            .update({ score: playerResult.score + points })
-            .eq("id", playerResult.id)
-        ] : []),
+        ...(isValid
+          ? [
+              supabase
+                .from("game_players")
+                .update({ score: playerResult.score + points })
+                .eq("id", playerResult.id),
+            ]
+          : []),
 
         // Update room state
         supabase
@@ -627,11 +689,12 @@ export default function GameRoom() {
         is_valid: isValid,
         current_player_turn: nextPlayer.user_id,
       });
-
     } catch (error) {
       console.error("Error submitting word:", error);
-      toast.error("Failed to submit word");
-      
+      toast.error("Failed to submit word", {
+        position: "top-center",
+      });
+
       // Revert optimistic updates on error
       if (room) {
         setRoom(room);
@@ -676,10 +739,14 @@ export default function GameRoom() {
         .eq("user_id", appUser.id);
 
       navigate("/lobby");
-      toast.success("Left room");
+      toast.success("Left room", {
+        position: "top-center",
+      });
     } catch (error) {
       console.error("Error leaving room:", error);
-      toast.error("Failed to leave room");
+      toast.error("Failed to leave room", {
+        position: "top-center",
+      });
     }
   };
 
@@ -708,11 +775,15 @@ export default function GameRoom() {
         });
 
         if (error) throw error;
-        toast.success("Rejoined the game!");
+        toast.success("Rejoined the game!", {
+          position: "top-center",
+        });
       }
     } catch (error) {
       console.error("Error rejoining room:", error);
-      toast.error("Failed to rejoin room");
+      toast.error("Failed to rejoin room", {
+        position: "top-center",
+      });
     }
   };
 
@@ -810,7 +881,10 @@ export default function GameRoom() {
                     ? "🎮 Playing"
                     : "🏁 Finished"}
                 </Badge>
-                <Badge variant="outline" className="border-neon-cyan/30 text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10 transition-all duration-200">
+                <Badge
+                  variant="outline"
+                  className="border-neon-cyan/30 text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10 transition-all duration-200"
+                >
                   Round {room.current_round || 1}/{room.rounds}
                 </Badge>
               </div>
@@ -841,7 +915,11 @@ export default function GameRoom() {
               >
                 <motion.span
                   animate={{ rotate: isConnected ? 0 : 360 }}
-                  transition={{ duration: 1, repeat: isConnected ? 0 : Infinity, ease: "linear" }}
+                  transition={{
+                    duration: 1,
+                    repeat: isConnected ? 0 : Infinity,
+                    ease: "linear",
+                  }}
                   className="group-hover:rotate-180 transition-transform duration-300"
                 >
                   🔄
