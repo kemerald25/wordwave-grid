@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { toast } from 'sonner';
 
 interface GameSyncOptions {
   roomId: string;
@@ -30,12 +31,12 @@ export function useGameSync({
       supabase.removeChannel(channelRef.current);
     }
 
-    // Create new channel with optimized settings
+    // Create new channel with better real-time settings
     const channel = supabase
       .channel(`game-room-${roomId}`, {
         config: {
           presence: { key: roomId },
-          broadcast: { self: true, ack: false }
+          broadcast: { self: false, ack: true }
         }
       })
       .on(
@@ -47,10 +48,6 @@ export function useGameSync({
           filter: `id=eq.${roomId}`,
         },
         (payload) => {
-          const now = Date.now();
-          if (now - lastUpdateRef.current < 100) return; // Debounce rapid updates
-          lastUpdateRef.current = now;
-          
           console.log('Real-time room update:', payload);
           onRoomUpdate?.(payload.new);
         }
@@ -68,12 +65,14 @@ export function useGameSync({
           
           if (payload.eventType === 'INSERT') {
             onPlayerJoin?.(payload.new);
+            // Immediately fetch updated players list
+            setTimeout(fetchPlayers, 100);
           } else if (payload.eventType === 'DELETE') {
             onPlayerLeave?.(payload.old?.id);
+            setTimeout(fetchPlayers, 100);
+          } else if (payload.eventType === 'UPDATE') {
+            setTimeout(fetchPlayers, 100);
           }
-          
-          // Fetch updated players list
-          fetchPlayers();
         }
       )
       .on(
@@ -87,19 +86,42 @@ export function useGameSync({
         (payload) => {
           console.log('Real-time move update:', payload);
           onMoveUpdate?.(payload.new);
+          
+          // Force refresh room data to get updated state
+          setTimeout(() => {
+            fetchPlayers();
+            // Also trigger room update to get latest word and turn
+            if (onRoomUpdate) {
+              supabase
+                .from('game_rooms')
+                .select('*')
+                .eq('id', roomId)
+                .single()
+                .then(({ data }) => {
+                  if (data) onRoomUpdate(data);
+                });
+            }
+          }, 50);
         }
       )
-      .on('broadcast', { event: 'player_typing' }, (payload) => {
-        console.log('Player typing:', payload);
-        // Handle typing indicators
-      })
-      .on('broadcast', { event: 'player_ready' }, (payload) => {
-        console.log('Player ready:', payload);
-        // Handle ready states
+      .on('broadcast', { event: 'game_update' }, (payload) => {
+        console.log('Broadcast game update:', payload);
+        // Handle immediate game state updates
+        if (payload.type === 'word_submitted') {
+          onMoveUpdate?.(payload.data);
+        } else if (payload.type === 'player_joined') {
+          onPlayerJoin?.(payload.data);
+        }
       });
 
     channel.subscribe((status) => {
       console.log('Realtime subscription status:', status);
+      if (status === 'SUBSCRIBED') {
+        console.log('Successfully subscribed to real-time updates');
+      } else if (status === 'CHANNEL_ERROR') {
+        console.error('Real-time subscription error');
+        toast.error('Connection issue - some updates may be delayed');
+      }
     });
 
     channelRef.current = channel;
@@ -132,12 +154,12 @@ export function useGameSync({
     }
   }, []);
 
-  const broadcastReady = useCallback((isReady: boolean) => {
+  const broadcastGameUpdate = useCallback((type: string, data: any) => {
     if (channelRef.current) {
       channelRef.current.send({
         type: 'broadcast',
-        event: 'player_ready',
-        payload: { isReady, timestamp: Date.now() }
+        event: 'game_update',
+        payload: { type, data, timestamp: Date.now() }
       });
     }
   }, []);
@@ -154,7 +176,7 @@ export function useGameSync({
 
   return {
     broadcastTyping,
-    broadcastReady,
+    broadcastGameUpdate,
     reconnect: setupRealtimeSync
   };
 }

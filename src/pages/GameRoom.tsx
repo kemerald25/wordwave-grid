@@ -68,9 +68,10 @@ export default function GameRoom() {
   const { notifyPlayerJoined, notifyGameStarted } = useGameNotifications();
 
   // Real-time synchronization
-  const { broadcastTyping } = useGameSync({
+  const { broadcastTyping, broadcastGameUpdate } = useGameSync({
     roomId: roomId || '',
     onRoomUpdate: (updatedRoom) => {
+      console.log('Room updated:', updatedRoom);
       setRoom(prev => prev ? { ...prev, ...updatedRoom } : null);
       
       // Update game state immediately
@@ -84,6 +85,8 @@ export default function GameRoom() {
         setIsMyTurn(myTurn);
         if (myTurn && gameStarted) {
           startTurnTimer();
+        } else if (timerRef.current) {
+          clearInterval(timerRef.current);
         }
       }
 
@@ -93,9 +96,11 @@ export default function GameRoom() {
       }
     },
     onPlayerUpdate: (players) => {
+      console.log('Players updated:', players);
       setRoom(prev => prev ? { ...prev, players } : null);
     },
     onMoveUpdate: (move) => {
+      console.log('Move updated:', move);
       if (move.is_valid && move.word) {
         setCurrentWord(move.word);
         setLastSubmittedWord(move.word);
@@ -105,6 +110,9 @@ export default function GameRoom() {
         if (move.user_id === appUser?.id && move.points_awarded) {
           toast.success(`+${move.points_awarded} points!`);
         }
+        
+        // Broadcast the update to other players
+        broadcastGameUpdate('word_submitted', move);
       } else if (move.user_id === appUser?.id && !move.is_valid) {
         toast.error(
           `Invalid word: ${move.validation_reason?.replace("_", " ")}`
@@ -112,7 +120,11 @@ export default function GameRoom() {
       }
     },
     onPlayerJoin: async (player) => {
+      console.log('Player joined:', player);
       toast.success(`${player.display_name} joined the game!`);
+      
+      // Broadcast player join
+      broadcastGameUpdate('player_joined', player);
       
       // Notify other players
       if (room && appUser?.id !== player.user_id) {
@@ -122,6 +134,7 @@ export default function GameRoom() {
     onPlayerLeave: (playerId) => {
       // Handle player leaving
       console.log('Player left:', playerId);
+      toast.info('A player left the game');
     }
   });
 
@@ -230,43 +243,8 @@ export default function GameRoom() {
         },
         (payload) => {
           console.log("Room update:", payload);
-          // Immediate state updates for better sync
-          if (payload.eventType === "UPDATE" && payload.new) {
-            const updatedRoom = payload.new;
-            setRoom((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    ...updatedRoom,
-                    status: updatedRoom.status as
-                      | "lobby"
-                      | "in_game"
-                      | "finished",
-                  }
-                : null
-            );
-
-            // Update game state immediately
-            if (updatedRoom.status === "in_game" && !gameStarted) {
-              setGameStarted(true);
-            }
-
-            // Update turn state immediately
-            if (updatedRoom.current_player_turn && appUser) {
-              const myTurn = updatedRoom.current_player_turn === appUser.id;
-              setIsMyTurn(myTurn);
-              if (myTurn && gameStarted) {
-                startTurnTimer();
-              }
-            }
-
-            // Update current word immediately
-            if (updatedRoom.last_word !== currentWord) {
-              setCurrentWord(updatedRoom.last_word || "");
-            }
-          }
-          // Still fetch for complete data
-          setTimeout(fetchRoom, 100);
+          // Fetch complete room data
+          setTimeout(fetchRoom, 50);
         }
       )
       .on(
@@ -279,8 +257,8 @@ export default function GameRoom() {
         },
         (payload) => {
           console.log("Players update:", payload);
-          // Immediate refresh for player changes
-          fetchRoom();
+          // Quick refresh for player changes
+          setTimeout(fetchRoom, 50);
         }
       )
       .on(
@@ -310,8 +288,8 @@ export default function GameRoom() {
               );
             }
           }
-          // Refresh room data to get updated scores and turn
-          fetchRoom();
+          // Quick refresh for move changes
+          setTimeout(fetchRoom, 50);
         }
       )
       .subscribe();
@@ -574,6 +552,14 @@ export default function GameRoom() {
             })
             .eq("id", roomId),
         ]);
+        
+        // Broadcast the successful move
+        broadcastGameUpdate('word_submitted', {
+          word: trimmedWord,
+          user_id: appUser.id,
+          points_awarded: points,
+          is_valid: true
+        });
       } else {
         // Still move to next turn even if word is invalid
         await nextTurn();
