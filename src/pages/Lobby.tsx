@@ -104,12 +104,12 @@ export default function Lobby() {
           </Button>
 
           <Button
-            onClick={() => (window.location.href = "/demo")}
+            onClick={() => navigate("/solo")}
             variant="outline"
             className="border-neon-magenta/30 hover:border-neon-magenta hover:bg-neon-magenta/10 text-lg px-8 py-4 rounded-2xl"
           >
             <Gamepad2 className="w-5 h-5 mr-2" />
-            Try Demo
+            Solo Challenge
           </Button>
 
           <Button

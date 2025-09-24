@@ -67,23 +67,27 @@ export default function GameRoom() {
   const { shareGameInvite, shareGameResult } = useGameSharing();
   const { notifyPlayerJoined, notifyGameStarted } = useGameNotifications();
 
-  // Real-time synchronization
-  const { broadcastTyping, broadcastGameUpdate } = useGameSync({
+  // Enhanced real-time synchronization
+  const { broadcastUpdate, forceRefresh, isConnected } = useGameSync({
     roomId: roomId || '',
     onRoomUpdate: (updatedRoom) => {
       console.log('Room updated:', updatedRoom);
-      setRoom(prev => prev ? { ...prev, ...updatedRoom } : null);
+      setRoom(updatedRoom);
       
       // Update game state immediately
       if (updatedRoom.status === "in_game" && !gameStarted) {
         setGameStarted(true);
+        toast.success("Game started! 🎮");
       }
 
       // Update turn state immediately
       if (updatedRoom.current_player_turn && appUser) {
         const myTurn = updatedRoom.current_player_turn === appUser.id;
+        const wasMyTurn = isMyTurn;
         setIsMyTurn(myTurn);
-        if (myTurn && gameStarted) {
+        
+        if (myTurn && gameStarted && !wasMyTurn) {
+          toast.info("It's your turn! ⚡");
           startTurnTimer();
         } else if (timerRef.current) {
           clearInterval(timerRef.current);
@@ -91,7 +95,7 @@ export default function GameRoom() {
       }
 
       // Update current word immediately
-      if (updatedRoom.last_word !== currentWord) {
+      if (updatedRoom.last_word && updatedRoom.last_word !== currentWord) {
         setCurrentWord(updatedRoom.last_word || "");
       }
     },
@@ -112,7 +116,7 @@ export default function GameRoom() {
         }
         
         // Broadcast the update to other players
-        broadcastGameUpdate('word_submitted', move);
+        broadcastUpdate('word_submitted', move);
       } else if (move.user_id === appUser?.id && !move.is_valid) {
         toast.error(
           `Invalid word: ${move.validation_reason?.replace("_", " ")}`
@@ -121,10 +125,9 @@ export default function GameRoom() {
     },
     onPlayerJoin: async (player) => {
       console.log('Player joined:', player);
-      toast.success(`${player.display_name} joined the game!`);
       
       // Broadcast player join
-      broadcastGameUpdate('player_joined', player);
+      broadcastUpdate('player_joined', player);
       
       // Notify other players
       if (room && appUser?.id !== player.user_id) {
@@ -134,7 +137,10 @@ export default function GameRoom() {
     onPlayerLeave: (playerId) => {
       // Handle player leaving
       console.log('Player left:', playerId);
-      toast.info('A player left the game');
+    },
+    onGameStateChange: (gameState) => {
+      // Handle complete game state changes
+      console.log('Complete game state updated:', gameState);
     }
   });
 
@@ -145,11 +151,9 @@ export default function GameRoom() {
     }
 
     fetchRoom();
-    const cleanup = setupRealtimeSubscription();
 
     // Cleanup function
     return () => {
-      cleanup();
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
@@ -554,7 +558,7 @@ export default function GameRoom() {
         ]);
         
         // Broadcast the successful move
-        broadcastGameUpdate('word_submitted', {
+        broadcastUpdate('word_submitted', {
           word: trimmedWord,
           user_id: appUser.id,
           points_awarded: points,
@@ -562,6 +566,11 @@ export default function GameRoom() {
         });
       } else {
         // Still move to next turn even if word is invalid
+        broadcastUpdate('turn_change', {
+          current_player_turn: room.players[
+            (room.players.findIndex((p) => p.user_id === appUser.id) + 1) % room.players.length
+          ].user_id
+        });
         await nextTurn();
       }
     } catch (error) {
@@ -586,12 +595,7 @@ export default function GameRoom() {
   };
 
   const handleInputChange = (value: string) => {
-    // Broadcast typing indicator
-    if (value.length > 0) {
-      broadcastTyping(true);
-    } else {
-      broadcastTyping(false);
-    }
+    // Optional: Add typing indicators later
   };
 
   const leaveRoom = async () => {
@@ -695,6 +699,18 @@ export default function GameRoom() {
             Back to Lobby
           </Button>
 
+          {/* Connection Status */}
+          {!isConnected && (
+            <div className="flex items-center gap-2 text-yellow-500">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                className="w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full"
+              />
+              <span className="text-sm">Reconnecting...</span>
+            </div>
+          )}
+
           <div className="text-center">
             <h1 className="text-2xl font-bold text-brand-500">{room.name}</h1>
             <Badge
@@ -722,6 +738,15 @@ export default function GameRoom() {
             >
               <Share2 className="w-4 h-4 mr-2" />
               Share
+            </Button>
+            
+            <Button
+              onClick={forceRefresh}
+              variant="outline"
+              className="border-neon-cyan/30 hover:border-neon-cyan hover:bg-neon-cyan/10"
+              title="Refresh game state"
+            >
+              🔄
             </Button>
             
             <Button

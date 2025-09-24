@@ -18,8 +18,8 @@ const navItems = [
   },
   {
     path: '/demo',
-    icon: Gamepad2,
-    label: 'Demo',
+    icon: Target,
+    label: 'Solo',
     color: 'text-neon-green'
   }
 ];

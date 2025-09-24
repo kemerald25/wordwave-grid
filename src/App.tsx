@@ -6,7 +6,7 @@ import { AuthGate } from "./components/AuthGate";
 import { BottomNavigation } from "./components/BottomNavigation";
 import Index from "./pages/Index";
 import Lobby from "./pages/Lobby";
-import GameDemo from "./pages/GameDemo";
+import SoloGame from "./pages/SoloGame";
 import GameRoom from "./pages/GameRoom";
 import Leaderboard from "./pages/Leaderboard";
 import NotFound from "./pages/NotFound";
@@ -48,7 +48,14 @@ const AppContent = () => {
             </AuthGate>
           }
         />
-        <Route path="/demo" element={<GameDemo />} />
+        <Route 
+          path="/solo" 
+          element={
+            <AuthGate showGuestOption={true}>
+              <SoloGame />
+            </AuthGate>
+          } 
+        />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>

@@ -3,7 +3,7 @@ import { Layout } from '@/components/Layout';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Medal, Award, Crown, Zap, Target, Clock } from 'lucide-react';
+import { Trophy, Medal, Award, Crown, Zap, Target, Clock, Users, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -40,7 +40,8 @@ export default function Leaderboard() {
   const [weeklyLeaders, setWeeklyLeaders] = useState<DailyWeeklyStats[]>([]);
   const [dailyLeaders, setDailyLeaders] = useState<DailyWeeklyStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('all-time');
+  const [activeTab, setActiveTab] = useState('multiplayer');
+  const [soloLeaders, setSoloLeaders] = useState<LeaderboardEntry[]>([]);
 
   useEffect(() => {
     fetchLeaderboards();
@@ -57,12 +58,28 @@ export default function Leaderboard() {
           *,
           user:users(display_name, avatar_url, handle)
         `)
+        .gt('total_wins', 0) // Only show players with multiplayer wins
         .order('total_points', { ascending: false })
         .limit(50);
 
       if (allTimeError) throw allTimeError;
 
       setAllTimeLeaders(allTimeData || []);
+
+      // Fetch solo leaderboard (players with games but no wins - indicating solo play)
+      const { data: soloData, error: soloError } = await supabase
+        .from('leaderboards')
+        .select(`
+          *,
+          user:users(display_name, avatar_url, handle)
+        `)
+        .gt('total_games', 0)
+        .order('total_points', { ascending: false })
+        .limit(50);
+
+      if (soloError) throw soloError;
+
+      setSoloLeaders(soloData || []);
 
       // Fetch weekly stats (last 7 days)
       const weekAgo = new Date();
@@ -314,9 +331,14 @@ export default function Leaderboard() {
     <Layout title="Leaderboard" subtitle="Top players and their achievements">
       <div className="max-w-4xl mx-auto space-y-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 glass-panel">
-            <TabsTrigger value="all-time" className="data-[state=active]:bg-brand-500 data-[state=active]:text-black">
-              All Time
+          <TabsList className="grid w-full grid-cols-4 glass-panel">
+            <TabsTrigger value="multiplayer" className="data-[state=active]:bg-brand-500 data-[state=active]:text-black">
+              <Users className="w-4 h-4 mr-1" />
+              Multiplayer
+            </TabsTrigger>
+            <TabsTrigger value="solo" className="data-[state=active]:bg-neon-green data-[state=active]:text-black">
+              <User className="w-4 h-4 mr-1" />
+              Solo
             </TabsTrigger>
             <TabsTrigger value="weekly" className="data-[state=active]:bg-brand-500 data-[state=active]:text-black">
               This Week
@@ -326,7 +348,7 @@ export default function Leaderboard() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="all-time" className="space-y-4">
+          <TabsContent value="multiplayer" className="space-y-4">
             {allTimeLeaders.length > 0 ? (
               allTimeLeaders.map((entry, index) => (
                 <LeaderboardCard
@@ -338,10 +360,31 @@ export default function Leaderboard() {
               ))
             ) : (
               <Card className="glass-panel p-8 text-center">
-                <Trophy className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-foreground mb-2">No Rankings Yet</h3>
+                <Users className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-foreground mb-2">No Multiplayer Rankings Yet</h3>
                 <p className="text-muted-foreground">
-                  Be the first to play and claim the top spot!
+                  Be the first to win a multiplayer game and claim the top spot!
+                </p>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="solo" className="space-y-4">
+            {soloLeaders.length > 0 ? (
+              soloLeaders.map((entry, index) => (
+                <LeaderboardCard
+                  key={entry.id}
+                  entry={entry}
+                  rank={index + 1}
+                  type="all-time"
+                />
+              ))
+            ) : (
+              <Card className="glass-panel p-8 text-center">
+                <User className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-foreground mb-2">No Solo Rankings Yet</h3>
+                <p className="text-muted-foreground">
+                  Be the first to play solo and set a high score!
                 </p>
               </Card>
             )}
