@@ -76,117 +76,80 @@ export default function GameRoom() {
   const { shareGameInvite, shareGameResult } = useGameSharing();
   const { notifyPlayerJoined, notifyGameStarted } = useGameNotifications();
 
-  // Enhanced real-time synchronization with immediate state updates
-  const { broadcastUpdate, broadcastTyping, forceRefresh, isConnected } = useGameSync({
+  // Enhanced real-time synchronization
+  const { broadcastUpdate, forceRefresh, isConnected } = useGameSync({
     roomId: roomId || "",
     onRoomUpdate: (updatedRoom) => {
-      console.log("🎮 Room updated via sync:", updatedRoom);
-      
-      // Immediately update room state
+      console.log("Room updated:", updatedRoom);
       setRoom(updatedRoom);
 
-      // Handle game state changes with immediate feedback
+      // Update game state immediately
       if (updatedRoom.status === "in_game" && !gameStarted) {
         setGameStarted(true);
         toast.success("Game started! 🎮");
       }
 
-      // Handle turn changes with immediate feedback
+      // Update turn state immediately
       if (updatedRoom.current_player_turn && appUser) {
         const myTurn = updatedRoom.current_player_turn === appUser.id;
         const wasMyTurn = isMyTurn;
-        
-        // Update turn state immediately
         setIsMyTurn(myTurn);
 
         if (myTurn && gameStarted && !wasMyTurn) {
           toast.info("It's your turn! ⚡");
-          startTurnTimer(updatedRoom.round_time_seconds);
-        } else if (!myTurn && timerRef.current) {
+          startTurnTimer();
+        } else if (timerRef.current) {
           clearInterval(timerRef.current);
-          setTimeLeft(0);
         }
       }
 
-      // Handle word updates with immediate feedback
-      if (updatedRoom.last_word !== currentWord) {
-        const newWord = updatedRoom.last_word || "";
-        console.log("🔄 Word updated:", currentWord, "->", newWord);
-        setCurrentWord(newWord);
-        
-        // If there's a new word and it's different, show reveal animation
-        if (newWord && newWord !== currentWord && newWord !== lastSubmittedWord) {
-          setLastSubmittedWord(newWord);
-          setShowWordReveal(true);
-          
-          // Auto-hide reveal after animation
-          setTimeout(() => {
-            setShowWordReveal(false);
-          }, 2000);
-        }
+      // Update current word immediately
+      if (updatedRoom.last_word && updatedRoom.last_word !== currentWord) {
+        setCurrentWord(updatedRoom.last_word || "");
       }
     },
     onPlayerUpdate: (players) => {
-      console.log("👥 Players updated via sync:", players);
+      console.log("Players updated:", players);
       setRoom((prev) => (prev ? { ...prev, players } : null));
     },
     onMoveUpdate: (move) => {
-      console.log("🎯 Move updated via sync:", move);
-      
+      console.log("Move updated:", move);
       if (move.is_valid && move.word) {
-        // Immediately update the word state
         setCurrentWord(move.word);
         setLastSubmittedWord(move.word);
         setShowWordReveal(true);
 
-        // Show points awarded toast for the player who made the move
+        // Show points awarded toast
         if (move.user_id === appUser?.id && move.points_awarded) {
           toast.success(`+${move.points_awarded} points!`);
         }
-        
-        // Auto-hide reveal animation
-        setTimeout(() => {
-          setShowWordReveal(false);
-        }, 2000);
+
+        // Broadcast the update to other players
+        broadcastUpdate("word_submitted", move);
       } else if (move.user_id === appUser?.id && !move.is_valid) {
-        toast.error(`Invalid word: ${move.validation_reason?.replace("_", " ")}`);
+        toast.error(
+          `Invalid word: ${move.validation_reason?.replace("_", " ")}`
+        );
       }
     },
     onPlayerJoin: async (player) => {
-      console.log("🆕 Player joined via sync:", player);
-      
+      console.log("Player joined:", player);
+
+      // Broadcast player join
+      broadcastUpdate("player_joined", player);
+
+      // Notify other players
       if (room && appUser?.id !== player.user_id) {
-        toast.success(`${player.display_name} joined!`);
         await notifyPlayerJoined(room.id, room.name, player.display_name);
       }
     },
     onPlayerLeave: (playerId) => {
-      console.log("👋 Player left via sync:", playerId);
-      toast.info("Player left the game");
+      // Handle player leaving
+      console.log("Player left:", playerId);
     },
     onGameStateChange: (gameState) => {
-      console.log("🔄 Complete game state updated via sync");
-      // Additional game state handling if needed
-    },
-    onTypingUpdate: (isTyping, playerName) => {
-      if (isTyping && playerName && playerName !== appUser?.display_name) {
-        setTypingPlayers(prev => new Set([...prev, playerName]));
-        
-        // Auto-clear typing indicator after 3 seconds
-        setTimeout(() => {
-          setTypingPlayers(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(playerName);
-            return newSet;
-          });
-        }, 3000);
-      } else if (playerName) {
-        setTypingPlayers(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(playerName);
-          return newSet;
-        });
-      }
+      // Handle complete game state changes
+      console.log("Complete game state updated:", gameState);
     },
   });
 
@@ -196,7 +159,6 @@ export default function GameRoom() {
       return;
     }
 
-    // Initial room fetch
     fetchRoom();
 
     // Cleanup function
@@ -262,7 +224,7 @@ export default function GameRoom() {
 
         // Start timer if it's my turn and game is active
         if (myTurn && typedRoom.status === "in_game") {
-          startTurnTimer(typedRoom.round_time_seconds);
+          startTurnTimer();
         } else if (timerRef.current) {
           clearInterval(timerRef.current);
         }
@@ -279,6 +241,75 @@ export default function GameRoom() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const setupRealtimeSubscription = () => {
+    const subscription = supabase
+      .channel(`room-${roomId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "game_rooms",
+          filter: `id=eq.${roomId}`,
+        },
+        (payload) => {
+          console.log("Room update:", payload);
+          // Fetch complete room data
+          setTimeout(fetchRoom, 50);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "game_players",
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          console.log("Players update:", payload);
+          // Quick refresh for player changes
+          setTimeout(fetchRoom, 50);
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "game_moves",
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          console.log("Move update:", payload);
+          if (payload.eventType === "INSERT") {
+            const move = payload.new;
+            if (move.is_valid && move.word) {
+              setCurrentWord(move.word);
+              setLastSubmittedWord(move.word);
+              setShowWordReveal(true);
+
+              // Show points awarded toast
+              if (move.user_id === appUser?.id && move.points_awarded) {
+                toast.success(`+${move.points_awarded} points!`);
+              }
+            } else if (move.user_id === appUser?.id && !move.is_valid) {
+              toast.error(
+                `Invalid word: ${move.validation_reason?.replace("_", " ")}`
+              );
+            }
+          }
+          // Quick refresh for move changes
+          setTimeout(fetchRoom, 50);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
   };
 
   const startGame = async () => {
@@ -306,26 +337,7 @@ export default function GameRoom() {
               )
         ) || room.players[1]; // Fallback to second player if no non-host found
 
-      // Optimistically update local state first
-      const updatedRoom = {
-        ...room,
-        status: "in_game" as const,
-        current_player_turn: firstPlayer?.user_id,
-        current_round: 1,
-        last_word: null,
-      };
-      setRoom(updatedRoom);
-      setGameStarted(true);
-      setCurrentWord("");
-
-      if (firstPlayer?.user_id === appUser.id) {
-        setIsMyTurn(true);
-        startTurnTimer(room.round_time_seconds);
-      } else {
-        setIsMyTurn(false);
-      }
-
-      // Then update database
+      // Start the game
       const { error } = await supabase
         .from("game_rooms")
         .update({
@@ -333,7 +345,7 @@ export default function GameRoom() {
           started_at: new Date().toISOString(),
           current_round: 1,
           current_player_turn: firstPlayer?.user_id,
-          last_word: null,
+          last_word: null, // Ensure we start with no word
         })
         .eq("id", roomId);
 
@@ -348,34 +360,31 @@ export default function GameRoom() {
 
       toast.success("Game started!");
 
-      // Broadcast the game start
-      broadcastUpdate("game_started", {
-        current_player_turn: firstPlayer?.user_id,
-        status: "in_game",
-      });
-
       // Notify all players
       await notifyGameStarted(roomId, room.name);
 
+      setGameStarted(true);
+      setCurrentWord(""); // Clear any previous word
+
+      // Set turn state immediately for better UX
+      if (firstPlayer?.user_id === appUser.id) {
+        setIsMyTurn(true);
+        startTurnTimer();
+      } else {
+        setIsMyTurn(false);
+      }
     } catch (error) {
       console.error("Error starting game:", error);
       toast.error("Failed to start game");
-      
-      // Revert optimistic update on error
-      setGameStarted(false);
-      if (room) {
-        setRoom({ ...room, status: "lobby" });
-      }
     }
   };
 
-  const startTurnTimer = (duration?: number) => {
+  const startTurnTimer = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
 
-    const timerDuration = duration || room?.round_time_seconds || 15;
-    setTimeLeft(timerDuration);
+    setTimeLeft(room?.round_time_seconds || 15);
 
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
@@ -410,14 +419,6 @@ export default function GameRoom() {
     const nextPlayerIndex = (currentPlayerIndex + 1) % room.players.length;
     const nextPlayer = room.players[nextPlayerIndex];
 
-    // Optimistically update local state first
-    const updatedRoom = {
-      ...room,
-      current_player_turn: nextPlayer.user_id,
-    };
-    setRoom(updatedRoom);
-    setIsMyTurn(nextPlayer.user_id === appUser.id);
-
     try {
       await supabase
         .from("game_rooms")
@@ -425,16 +426,8 @@ export default function GameRoom() {
           current_player_turn: nextPlayer.user_id,
         })
         .eq("id", roomId);
-
-      // Broadcast turn change
-      broadcastUpdate("turn_changed", {
-        current_player_turn: nextPlayer.user_id,
-      });
     } catch (error) {
       console.error("Error moving to next turn:", error);
-      // Revert optimistic update on error
-      setRoom(room);
-      setIsMyTurn(room.current_player_turn === appUser.id);
     }
   };
 
@@ -449,7 +442,7 @@ export default function GameRoom() {
     }
 
     setIsSubmitting(true);
-    broadcastTyping(false, appUser?.display_name); // Stop typing indicator
+    broadcastTyping(false); // Stop typing indicator
     const timeTaken = (room.round_time_seconds - timeLeft) * 1000;
 
     try {
@@ -462,36 +455,32 @@ export default function GameRoom() {
         return;
       }
 
-      // Get current round and player info
-      const [roundResult, playerResult] = await Promise.all([
-        supabase
-          .from("game_rounds")
-          .select("id")
-          .eq("room_id", roomId)
-          .is("ended_at", null)
-          .single(),
-        Promise.resolve(room.players.find((p) => p.user_id === appUser.id))
-      ]);
+      // Get current round
+      const { data: currentRound } = await supabase
+        .from("game_rounds")
+        .select("id")
+        .eq("room_id", roomId)
+        .is("ended_at", null)
+        .single();
 
-      if (!roundResult.data) {
+      if (!currentRound) {
         toast.error("No active round found");
-        setIsSubmitting(false);
         return;
       }
 
-      if (!playerResult) {
+      // Get player info
+      const player = room.players.find((p) => p.user_id === appUser.id);
+      if (!player) {
         toast.error("Player not found");
-        setIsSubmitting(false);
         return;
       }
 
       // Clear timer immediately to prevent double submissions
       if (timerRef.current) {
         clearInterval(timerRef.current);
-        setTimeLeft(0);
       }
 
-      // Validation logic
+      // Additional chain validation
       const normalizedWord = trimmedWord.toLowerCase().replace(/[^a-z]/g, "");
       let isValid = true;
       let validationReason = "valid";
@@ -521,7 +510,7 @@ export default function GameRoom() {
         }
       }
 
-      // Calculate points only if valid
+      // Calculate points only if valid and word was actually submitted
       if (isValid && normalizedWord.length > 0) {
         const basePoints = normalizedWord.length;
         const speedBonus = Math.max(
@@ -535,109 +524,69 @@ export default function GameRoom() {
         points = basePoints + speedBonus;
       }
 
-      // Get next player
-      const currentPlayerIndex = room.players.findIndex(
-        (p) => p.user_id === appUser.id
-      );
-      const nextPlayerIndex = (currentPlayerIndex + 1) % room.players.length;
-      const nextPlayer = room.players[nextPlayerIndex];
-
-      // Optimistically update local state FIRST for immediate feedback
-      if (isValid) {
-        // Update word immediately
-        setCurrentWord(trimmedWord);
-        setLastSubmittedWord(trimmedWord);
-        setShowWordReveal(true);
-        
-        // Update room state
-        const updatedPlayers = room.players.map(p => 
-          p.user_id === appUser.id ? { ...p, score: p.score + points } : p
-        );
-        
-        const updatedRoom = {
-          ...room,
-          last_word: trimmedWord,
-          current_player_turn: nextPlayer.user_id,
-          players: updatedPlayers,
-        };
-        
-        setRoom(updatedRoom);
-        setIsMyTurn(false);
-        
-        // Show points toast immediately
-        if (points > 0) {
-          toast.success(`+${points} points!`);
-        }
-
-        // Auto-hide reveal animation
-        setTimeout(() => {
-          setShowWordReveal(false);
-        }, 2000);
-      } else {
-        // Still move to next turn even if word is invalid
-        const updatedRoom = {
-          ...room,
-          current_player_turn: nextPlayer.user_id,
-        };
-        setRoom(updatedRoom);
-        setIsMyTurn(false);
-      }
-
-      // Then update database
-      await Promise.all([
-        // Insert the move
-        supabase.from("game_moves").insert({
-          round_id: roundResult.data.id,
-          room_id: roomId,
-          player_id: playerResult.id,
-          user_id: appUser.id,
-          word: trimmedWord,
-          normalized_word: normalizedWord,
-          submitted_at: new Date().toISOString(),
-          is_valid: isValid,
-          validation_reason: validationReason,
-          time_taken_ms: timeTaken,
-          points_awarded: isValid ? points : 0,
-          chain_valid: isValid,
-        }),
-
-        // Update player score if valid
-        ...(isValid ? [
-          supabase
-            .from("game_players")
-            .update({ score: playerResult.score + points })
-            .eq("id", playerResult.id)
-        ] : []),
-
-        // Update room state
-        supabase
-          .from("game_rooms")
-          .update({
-            ...(isValid ? { last_word: trimmedWord } : {}),
-            current_player_turn: nextPlayer.user_id,
-          })
-          .eq("id", roomId),
-      ]);
-
-      // Broadcast the move immediately after database update
-      broadcastUpdate("word_submitted", {
-        word: trimmedWord,
+      // Insert the move
+      const { error: moveError } = await supabase.from("game_moves").insert({
+        round_id: currentRound.id,
+        room_id: roomId,
+        player_id: player.id,
         user_id: appUser.id,
-        points_awarded: isValid ? points : 0,
+        word: trimmedWord,
+        normalized_word: normalizedWord,
+        submitted_at: new Date().toISOString(),
         is_valid: isValid,
-        current_player_turn: nextPlayer.user_id,
+        validation_reason: validationReason,
+        time_taken_ms: timeTaken,
+        points_awarded: isValid ? points : 0,
+        chain_valid: isValid,
       });
 
+      if (moveError) throw moveError;
+
+      // Update player score and room state if valid
+      if (isValid) {
+        await Promise.all([
+          supabase
+            .from("game_players")
+            .update({
+              score: player.score + points,
+            })
+            .eq("id", player.id),
+
+          supabase
+            .from("game_rooms")
+            .update({
+              last_word: trimmedWord,
+              current_player_turn:
+                room.players[
+                  (room.players.findIndex((p) => p.user_id === appUser.id) +
+                    1) %
+                    room.players.length
+                ].user_id,
+            })
+            .eq("id", roomId),
+        ]);
+
+        // Broadcast the successful move
+        broadcastUpdate("word_submitted", {
+          word: trimmedWord,
+          user_id: appUser.id,
+          points_awarded: points,
+          is_valid: true,
+        });
+      } else {
+        // Still move to next turn even if word is invalid
+        broadcastUpdate("turn_change", {
+          current_player_turn:
+            room.players[
+              (room.players.findIndex((p) => p.user_id === appUser.id) + 1) %
+                room.players.length
+            ].user_id,
+        });
+        await nextTurn();
+      }
     } catch (error) {
       console.error("Error submitting word:", error);
       toast.error("Failed to submit word");
-      
-      // Revert optimistic updates on error
-      if (room) {
-        setRoom(room);
-        setIsMyTurn(room.current_player_turn === appUser.id);
-        setCurrentWord(room.last_word || "");
-      }
     } finally {
       setIsSubmitting(false);
     }
@@ -657,12 +606,11 @@ export default function GameRoom() {
   };
 
   const handleInputChange = (value: string) => {
-    // Broadcast typing indicator
-    if (value.length > 0) {
-      broadcastTyping(true, appUser?.display_name);
-    } else {
-      broadcastTyping(false, appUser?.display_name);
-    }
+    // Optional: Add typing indicators later
+  };
+
+  const broadcastTyping = (isTyping: boolean) => {
+    // Placeholder for typing indicator functionality
   };
 
   const leaveRoom = async () => {
@@ -784,82 +732,59 @@ export default function GameRoom() {
             )}
           </div>
 
-          {/* Center - Room info with enhanced styling */}
-          <div className="text-center relative">
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              className="inline-block px-6 py-3 glass-panel rounded-2xl bg-gradient-to-r from-brand-500/10 to-neon-magenta/10 border border-brand-500/20 hover:border-brand-500/40 transition-all duration-300"
+          {/* Center - Room info */}
+          <div className="text-center">
+            <h1 className="text-xl md:text-2xl font-bold text-brand-500 truncate max-w-[200px] md:max-w-none">
+              {room.name}
+            </h1>
+            <Badge
+              className={`${
+                room.status === "lobby"
+                  ? "bg-brand-500"
+                  : room.status === "in_game"
+                  ? "bg-neon-magenta"
+                  : "bg-muted"
+              } text-black font-medium`}
             >
-              <h1 className="text-xl md:text-2xl font-bold text-brand-500 truncate max-w-[200px] md:max-w-none flex items-center gap-2 justify-center">
-                <Trophy className="w-5 h-5 text-neon-magenta" />
-                {room.name}
-              </h1>
-              <div className="flex items-center gap-2 justify-center mt-1">
-                <Badge
-                  className={`${
-                    room.status === "lobby"
-                      ? "bg-brand-500 hover:bg-brand-600"
-                      : room.status === "in_game"
-                      ? "bg-neon-magenta hover:bg-neon-magenta/80"
-                      : "bg-muted hover:bg-muted/80"
-                  } text-black font-medium transition-colors duration-200`}
-                >
-                  {room.status === "lobby"
-                    ? "🏃 Waiting"
-                    : room.status === "in_game"
-                    ? "🎮 Playing"
-                    : "🏁 Finished"}
-                </Badge>
-                <Badge variant="outline" className="border-neon-cyan/30 text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10 transition-all duration-200">
-                  Round {room.current_round || 1}/{room.rounds}
-                </Badge>
-              </div>
-            </motion.div>
+              {room.status === "lobby"
+                ? "Waiting"
+                : room.status === "in_game"
+                ? "Playing"
+                : "Finished"}
+            </Badge>
           </div>
 
-          {/* Right side - Action buttons with enhanced hover effects */}
+          {/* Right side - Action buttons */}
           <div className="flex gap-2 justify-center md:justify-end">
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button
-                onClick={handleShareGame}
-                variant="outline"
-                size="sm"
-                className="border-brand-500/30 hover:border-brand-500 hover:bg-brand-500/10 hover:shadow-neon transition-all duration-300 group"
-              >
-                <Share2 className="w-4 h-4 md:mr-2 group-hover:rotate-12 transition-transform duration-200" />
-                <span className="hidden md:inline">Share</span>
-              </Button>
-            </motion.div>
+            <Button
+              onClick={handleShareGame}
+              variant="outline"
+              size="sm"
+              className="border-brand-500/30 hover:border-brand-500 hover:bg-brand-500/10"
+            >
+              <Share2 className="w-4 h-4 md:mr-2" />
+              <span className="hidden md:inline">Share</span>
+            </Button>
 
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button
-                onClick={forceRefresh}
-                variant="outline"
-                size="sm"
-                className="border-neon-cyan/30 hover:border-neon-cyan hover:bg-neon-cyan/10 hover:shadow-glow transition-all duration-300 group"
-                title="Refresh game state"
-              >
-                <motion.span
-                  animate={{ rotate: isConnected ? 0 : 360 }}
-                  transition={{ duration: 1, repeat: isConnected ? 0 : Infinity, ease: "linear" }}
-                  className="group-hover:rotate-180 transition-transform duration-300"
-                >
-                  🔄
-                </motion.span>
-              </Button>
-            </motion.div>
+            <Button
+              onClick={forceRefresh}
+              variant="outline"
+              size="sm"
+              className="border-neon-cyan/30 hover:border-neon-cyan hover:bg-neon-cyan/10"
+              title="Refresh game state"
+            >
+              🔄
+            </Button>
 
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button
-                onClick={leaveRoom}
-                variant="outline"
-                size="sm"
-                className="border-destructive/30 hover:border-destructive hover:bg-destructive/10 hover:shadow-lg hover:shadow-destructive/20 transition-all duration-300"
-              >
-                <span className="hidden sm:inline">Leave Room</span>
-                <span className="sm:hidden">Leave</span>
-              </Button>
-            </motion.div>
+            <Button
+              onClick={leaveRoom}
+              variant="outline"
+              size="sm"
+              className="border-destructive/30 hover:border-destructive hover:bg-destructive/10"
+            >
+              <span className="hidden sm:inline">Leave Room</span>
+              <span className="sm:hidden">Leave</span>
+            </Button>
           </div>
         </div>
 
@@ -908,13 +833,13 @@ export default function GameRoom() {
                           room.current_player_turn === player.user_id && (
                             <Zap className="w-4 h-4 text-brand-500 animate-pulse" />
                           )}
-                        {typingPlayers.has(player.display_name) && (
+                        {typingPlayers.has(player.user_id) && (
                           <motion.div
                             animate={{ opacity: [0.5, 1, 0.5] }}
                             transition={{ duration: 1, repeat: Infinity }}
-                            className="text-xs text-brand-500 font-medium"
+                            className="text-xs text-brand-500"
                           >
-                            ⌨️ typing...
+                            typing...
                           </motion.div>
                         )}
                       </div>
