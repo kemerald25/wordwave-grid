@@ -7,7 +7,16 @@ import { WordInput } from "@/components/WordInput";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Users, Crown, Trophy, Play, ArrowLeft, Zap, Share2, UserPlus } from "lucide-react";
+import {
+  Users,
+  Crown,
+  Trophy,
+  Play,
+  ArrowLeft,
+  Zap,
+  Share2,
+  UserPlus,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
@@ -69,11 +78,11 @@ export default function GameRoom() {
 
   // Enhanced real-time synchronization
   const { broadcastUpdate, forceRefresh, isConnected } = useGameSync({
-    roomId: roomId || '',
+    roomId: roomId || "",
     onRoomUpdate: (updatedRoom) => {
-      console.log('Room updated:', updatedRoom);
+      console.log("Room updated:", updatedRoom);
       setRoom(updatedRoom);
-      
+
       // Update game state immediately
       if (updatedRoom.status === "in_game" && !gameStarted) {
         setGameStarted(true);
@@ -85,7 +94,7 @@ export default function GameRoom() {
         const myTurn = updatedRoom.current_player_turn === appUser.id;
         const wasMyTurn = isMyTurn;
         setIsMyTurn(myTurn);
-        
+
         if (myTurn && gameStarted && !wasMyTurn) {
           toast.info("It's your turn! ⚡");
           startTurnTimer();
@@ -100,11 +109,11 @@ export default function GameRoom() {
       }
     },
     onPlayerUpdate: (players) => {
-      console.log('Players updated:', players);
-      setRoom(prev => prev ? { ...prev, players } : null);
+      console.log("Players updated:", players);
+      setRoom((prev) => (prev ? { ...prev, players } : null));
     },
     onMoveUpdate: (move) => {
-      console.log('Move updated:', move);
+      console.log("Move updated:", move);
       if (move.is_valid && move.word) {
         setCurrentWord(move.word);
         setLastSubmittedWord(move.word);
@@ -114,9 +123,9 @@ export default function GameRoom() {
         if (move.user_id === appUser?.id && move.points_awarded) {
           toast.success(`+${move.points_awarded} points!`);
         }
-        
+
         // Broadcast the update to other players
-        broadcastUpdate('word_submitted', move);
+        broadcastUpdate("word_submitted", move);
       } else if (move.user_id === appUser?.id && !move.is_valid) {
         toast.error(
           `Invalid word: ${move.validation_reason?.replace("_", " ")}`
@@ -124,11 +133,11 @@ export default function GameRoom() {
       }
     },
     onPlayerJoin: async (player) => {
-      console.log('Player joined:', player);
-      
+      console.log("Player joined:", player);
+
       // Broadcast player join
-      broadcastUpdate('player_joined', player);
-      
+      broadcastUpdate("player_joined", player);
+
       // Notify other players
       if (room && appUser?.id !== player.user_id) {
         await notifyPlayerJoined(room.id, room.name, player.display_name);
@@ -136,12 +145,12 @@ export default function GameRoom() {
     },
     onPlayerLeave: (playerId) => {
       // Handle player leaving
-      console.log('Player left:', playerId);
+      console.log("Player left:", playerId);
     },
     onGameStateChange: (gameState) => {
       // Handle complete game state changes
-      console.log('Complete game state updated:', gameState);
-    }
+      console.log("Complete game state updated:", gameState);
+    },
   });
 
   useEffect(() => {
@@ -350,10 +359,10 @@ export default function GameRoom() {
       });
 
       toast.success("Game started!");
-      
+
       // Notify all players
       await notifyGameStarted(roomId, room.name);
-      
+
       setGameStarted(true);
       setCurrentWord(""); // Clear any previous word
 
@@ -439,7 +448,7 @@ export default function GameRoom() {
     try {
       // Validate word using external dictionary
       const validation = await validateWord(trimmedWord);
-      
+
       if (!validation.isValid) {
         toast.error(validation.error || "Invalid word");
         setIsSubmitting(false);
@@ -556,20 +565,22 @@ export default function GameRoom() {
             })
             .eq("id", roomId),
         ]);
-        
+
         // Broadcast the successful move
-        broadcastUpdate('word_submitted', {
+        broadcastUpdate("word_submitted", {
           word: trimmedWord,
           user_id: appUser.id,
           points_awarded: points,
-          is_valid: true
+          is_valid: true,
         });
       } else {
         // Still move to next turn even if word is invalid
-        broadcastUpdate('turn_change', {
-          current_player_turn: room.players[
-            (room.players.findIndex((p) => p.user_id === appUser.id) + 1) % room.players.length
-          ].user_id
+        broadcastUpdate("turn_change", {
+          current_player_turn:
+            room.players[
+              (room.players.findIndex((p) => p.user_id === appUser.id) + 1) %
+                room.players.length
+            ].user_id,
         });
         await nextTurn();
       }
@@ -583,19 +594,23 @@ export default function GameRoom() {
 
   const handleShareGame = () => {
     if (!room) return;
-    
+
     shareGameInvite({
       roomId: room.id,
       roomName: room.name,
       playerCount: room.players.length,
       maxPlayers: room.max_players,
       isHost: room.host_id === appUser?.id,
-      gameStatus: room.status
+      gameStatus: room.status,
     });
   };
 
   const handleInputChange = (value: string) => {
     // Optional: Add typing indicators later
+  };
+
+  const broadcastTyping = (isTyping: boolean) => {
+    // Placeholder for typing indicator functionality
   };
 
   const leaveRoom = async () => {
@@ -710,7 +725,9 @@ export default function GameRoom() {
                   transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                   className="w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full"
                 />
-                <span className="text-sm hidden sm:inline">Reconnecting...</span>
+                <span className="text-sm hidden sm:inline">
+                  Reconnecting...
+                </span>
               </div>
             )}
           </div>
@@ -748,7 +765,7 @@ export default function GameRoom() {
               <Share2 className="w-4 h-4 md:mr-2" />
               <span className="hidden md:inline">Share</span>
             </Button>
-            
+
             <Button
               onClick={forceRefresh}
               variant="outline"
@@ -758,7 +775,7 @@ export default function GameRoom() {
             >
               🔄
             </Button>
-            
+
             <Button
               onClick={leaveRoom}
               variant="outline"
@@ -769,7 +786,6 @@ export default function GameRoom() {
               <span className="sm:hidden">Leave</span>
             </Button>
           </div>
-        </div>
         </div>
 
         {/* Game Area */}
@@ -857,20 +873,21 @@ export default function GameRoom() {
           )}
 
           {/* Rejoin Option for disconnected players */}
-          {gameStarted && !room.players.find(p => p.user_id === appUser?.id) && (
-            <div className="text-center">
-              <Button
-                onClick={rejoinRoom}
-                className="btn-magenta text-lg px-8 py-4 rounded-2xl"
-              >
-                <UserPlus className="w-5 h-5 mr-2" />
-                Rejoin Game
-              </Button>
-              <p className="text-sm text-muted-foreground mt-2">
-                You can rejoin this game even after it started
-              </p>
-            </div>
-          )}
+          {gameStarted &&
+            !room.players.find((p) => p.user_id === appUser?.id) && (
+              <div className="text-center">
+                <Button
+                  onClick={rejoinRoom}
+                  className="btn-magenta text-lg px-8 py-4 rounded-2xl"
+                >
+                  <UserPlus className="w-5 h-5 mr-2" />
+                  Rejoin Game
+                </Button>
+                <p className="text-sm text-muted-foreground mt-2">
+                  You can rejoin this game even after it started
+                </p>
+              </div>
+            )}
 
           {/* Game Play Area */}
           {gameStarted && (
