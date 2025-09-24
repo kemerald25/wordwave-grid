@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
 import { toast } from "sonner";
+import { useGameNotifications } from "./useGameNotifications";
 
 export interface GameRoom {
   id: string;
@@ -38,6 +39,7 @@ export function useRooms() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { appUser } = useAuth();
+  const { notifyPlayerJoined } = useGameNotifications();
 
   const fetchRooms = useCallback(async () => {
     try {
@@ -131,6 +133,10 @@ export function useRooms() {
       if (playerError) throw playerError;
 
       toast.success("Room created successfully!");
+      
+      // Notify other players about the new room (optional)
+      // This could be used for lobby-wide notifications
+      
       await fetchRooms(); // Refresh the rooms list
       return room.id;
     } catch (err) {
@@ -200,6 +206,10 @@ export function useRooms() {
       if (error) throw error;
 
       toast.success("Joined room successfully!");
+      
+      // Notify other players in the room
+      await notifyPlayerJoined(roomId, room.name, appUser.display_name || "Player");
+      
       await fetchRooms();
       return true;
     } catch (err) {
@@ -213,7 +223,7 @@ export function useRooms() {
   useEffect(() => {
     fetchRooms();
 
-    // Subscribe to room changes with more specific filters and immediate updates
+    // Subscribe to room changes with optimized real-time updates
     const roomsSubscription = supabase
       .channel("rooms-lobby-changes")
       .on(
@@ -226,7 +236,8 @@ export function useRooms() {
         },
         (payload) => {
           console.log("Room change detected:", payload);
-          // Immediate update for better responsiveness
+          
+          // Immediate optimistic update for better UX
           if (payload.eventType === "UPDATE" && payload.new) {
             setRooms((prev) =>
               prev.map((room) =>
@@ -243,11 +254,18 @@ export function useRooms() {
               )
             );
           } else if (payload.eventType === "INSERT" && payload.new) {
-            // Add new room immediately
-            fetchRooms();
+            // Add new room immediately with optimistic update
+            const newRoom = {
+              ...payload.new,
+              status: payload.new.status as "lobby" | "in_game" | "finished",
+              players: [],
+              host: null
+            };
+            setRooms(prev => [newRoom, ...prev]);
           }
-          // Still do full fetch for complete data
-          setTimeout(fetchRooms, 200);
+          
+          // Debounced full refresh for complete data consistency
+          setTimeout(fetchRooms, 500);
         }
       )
       .on(
@@ -259,8 +277,24 @@ export function useRooms() {
         },
         (payload) => {
           console.log("Player change detected:", payload);
-          // Immediate refresh for player changes - these are critical for lobby display
-          fetchRooms();
+          
+          // Optimistic update for player changes
+          if (payload.eventType === "INSERT" && payload.new) {
+            setRooms(prev => prev.map(room => 
+              room.id === payload.new.room_id 
+                ? { ...room, players: [...room.players, payload.new] }
+                : room
+            ));
+          } else if (payload.eventType === "DELETE" && payload.old) {
+            setRooms(prev => prev.map(room => 
+              room.id === payload.old.room_id 
+                ? { ...room, players: room.players.filter(p => p.id !== payload.old.id) }
+                : room
+            ));
+          }
+          
+          // Debounced full refresh
+          setTimeout(fetchRooms, 300);
         }
       )
       .subscribe();

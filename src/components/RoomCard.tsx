@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
 import { GameRoom } from '@/hooks/useRooms';
+import { useGameSharing } from '@/hooks/useGameSharing';
 
 interface Player {
   id: string;
@@ -18,6 +19,7 @@ interface RoomCardProps {
 }
 
 export function RoomCard({ room, onJoin, onView }: RoomCardProps) {
+  const { shareGameInvite } = useGameSharing();
   const isJoinable = room.status === 'lobby' && room.players.length < room.max_players;
   const statusColors = {
     lobby: 'bg-brand-500',
@@ -31,6 +33,16 @@ export function RoomCard({ room, onJoin, onView }: RoomCardProps) {
     finished: 'Finished'
   };
 
+  const handleShare = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    shareGameInvite({
+      roomId: room.id,
+      roomName: room.name,
+      playerCount: room.players.length,
+      maxPlayers: room.max_players,
+      gameStatus: room.status
+    });
+  };
   return (
     <motion.div
       whileHover={{ scale: 1.02, y: -5 }}
@@ -98,24 +110,44 @@ export function RoomCard({ room, onJoin, onView }: RoomCardProps) {
         {/* Actions */}
         <div className="flex gap-2 pt-2">
           {isJoinable ? (
-            <Button
-              onClick={() => onJoin(room.id)}
-              className="btn-neon flex-1"
-              size="sm"
-            >
-              <Users className="w-4 h-4 mr-2" />
-              Join Game
-            </Button>
+            <>
+              <Button
+                onClick={() => onJoin(room.id)}
+                className="btn-neon flex-1"
+                size="sm"
+              >
+                <Users className="w-4 h-4 mr-2" />
+                Join Game
+              </Button>
+              <Button
+                onClick={handleShare}
+                variant="outline"
+                className="border-brand-500/30 hover:border-brand-500 hover:bg-brand-500/10"
+                size="sm"
+              >
+                Share
+              </Button>
+            </>
           ) : (
-            <Button
-              onClick={() => onView?.(room.id)}
-              variant="outline"
-              className="flex-1 border-brand-500/30 hover:border-brand-500 hover:bg-brand-500/10"
-              size="sm"
-            >
-              <Trophy className="w-4 h-4 mr-2" />
-              View Game
-            </Button>
+            <>
+              <Button
+                onClick={() => onView?.(room.id)}
+                variant="outline"
+                className="flex-1 border-brand-500/30 hover:border-brand-500 hover:bg-brand-500/10"
+                size="sm"
+              >
+                <Trophy className="w-4 h-4 mr-2" />
+                View Game
+              </Button>
+              <Button
+                onClick={handleShare}
+                variant="outline"
+                className="border-neon-magenta/30 hover:border-neon-magenta hover:bg-neon-magenta/10"
+                size="sm"
+              >
+                Share
+              </Button>
+            </>
           )}
         </div>
       </div>

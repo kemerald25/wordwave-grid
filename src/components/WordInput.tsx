@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 
 interface WordInputProps {
   onSubmit: (word: string) => void;
+  onChange?: (word: string) => void;
   disabled?: boolean;
   placeholder?: string;
   lastWord?: string;
@@ -16,6 +17,7 @@ interface WordInputProps {
 
 export function WordInput({ 
   onSubmit, 
+  onChange,
   disabled = false, 
   placeholder = "Enter your word...",
   lastWord,
@@ -41,6 +43,9 @@ export function WordInput({
     } else {
       setIsValid(true);
     }
+    
+    // Call onChange callback
+    onChange?.(word);
   }, [word, requiredStartLetter]);
 
   const handleSubmit = (e: React.FormEvent) => {

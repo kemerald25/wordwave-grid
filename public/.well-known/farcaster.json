@@ -39,7 +39,8 @@
   },
   "requiredCapabilities": [
     "actions.signIn",
-    "wallet.getEthereumProvider"
+    "wallet.getEthereumProvider",
+     "notifications"
   ],
   "baseBuilder": {
     "allowedAddresses": [
