@@ -261,7 +261,7 @@ export function useRooms() {
               players: [],
               host: null
             };
-            setRooms(prev => [newRoom, ...prev]);
+            setRooms(prev => [newRoom as GameRoom, ...prev]);
           }
           
           // Debounced full refresh for complete data consistency
@@ -282,7 +282,18 @@ export function useRooms() {
           if (payload.eventType === "INSERT" && payload.new) {
             setRooms(prev => prev.map(room => 
               room.id === payload.new.room_id 
-                ? { ...room, players: [...room.players, payload.new] }
+                ? { 
+                    ...room, 
+                    players: [...room.players, {
+                      id: payload.new.id,
+                      user_id: payload.new.user_id,
+                      display_name: payload.new.display_name,
+                      avatar_url: payload.new.avatar_url,
+                      score: payload.new.score,
+                      is_active: payload.new.is_active,
+                      turn_order: payload.new.turn_order
+                    }] 
+                  }
                 : room
             ));
           } else if (payload.eventType === "DELETE" && payload.old) {

@@ -51,7 +51,7 @@ export default function Leaderboard() {
     try {
       setIsLoading(true);
 
-      // Fetch all-time leaderboard
+      // Fetch all-time leaderboard (multiplayer - players with wins)
       const { data: allTimeData, error: allTimeError } = await supabase
         .from('leaderboards')
         .select(`
@@ -66,7 +66,7 @@ export default function Leaderboard() {
 
       setAllTimeLeaders(allTimeData || []);
 
-      // Fetch solo leaderboard (players with games but no wins - indicating solo play)
+      // Fetch solo leaderboard (all players with games)
       const { data: soloData, error: soloError } = await supabase
         .from('leaderboards')
         .select(`
@@ -209,109 +209,110 @@ export default function Leaderboard() {
     entry: LeaderboardEntry | DailyWeeklyStats; 
     rank: number;
     type?: 'all-time' | 'weekly' | 'daily';
-  }) => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: rank * 0.05 }}
-      className={`glass-panel p-4 rounded-xl hover:shadow-neon transition-all duration-300 ${
-        rank <= 3 ? 'ring-1 ring-brand-500/30' : ''
-      }`}
-    >
-      <div className="flex items-center gap-4">
-        {/* Rank */}
-        <div className="flex-shrink-0">
-          {getRankIcon(rank)}
-        </div>
-
-        {/* Avatar */}
-        <div className="flex-shrink-0">
-          {'user' in entry && entry.user?.avatar_url ? (
-            <img
-              src={entry.user.avatar_url}
-              alt={entry.user.display_name}
-              className="w-12 h-12 rounded-full border-2 border-brand-500"
-            />
-          ) : entry.avatar_url ? (
-            <img
-              src={entry.avatar_url}
-              alt={entry.display_name}
-              className="w-12 h-12 rounded-full border-2 border-brand-500"
-            />
-          ) : (
-            <div className="w-12 h-12 rounded-full bg-gradient-neon flex items-center justify-center text-black font-bold text-lg">
-              {('user' in entry ? entry.user?.display_name : entry.display_name)?.charAt(0).toUpperCase()}
-            </div>
-          )}
-        </div>
-
-        {/* Player Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="font-bold text-foreground truncate">
-              {'user' in entry ? entry.user?.display_name : entry.display_name}
-            </h3>
-            <Badge className={`${getRankBadgeColor(rank)} text-xs px-2 py-0.5`}>
-              #{rank}
-            </Badge>
+  }) => {
+    const isAllTime = 'user' in entry;
+    const avatarUrl = isAllTime ? entry.user?.avatar_url : entry.avatar_url;
+    const displayName = isAllTime ? entry.user?.display_name : entry.display_name;
+    const totalPoints = isAllTime ? entry.total_points : entry.total_points;
+    
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: rank * 0.05 }}
+        className={`glass-panel p-4 rounded-xl hover:shadow-neon transition-all duration-300 ${
+          rank <= 3 ? 'ring-1 ring-brand-500/30' : ''
+        }`}
+      >
+        <div className="flex items-center gap-4">
+          {/* Rank */}
+          <div className="flex-shrink-0">
+            {getRankIcon(rank)}
           </div>
-          
-          {'user' in entry && entry.user?.handle && (
-            <p className="text-xs text-muted-foreground mb-2">@{entry.user.handle}</p>
-          )}
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-            <div className="flex items-center gap-1">
-              <Trophy className="w-3 h-3 text-brand-500" />
-              <span className="text-muted-foreground">
-                {'total_points' in entry ? entry.total_points : entry.total_points} pts
-              </span>
+          {/* Avatar */}
+          <div className="flex-shrink-0">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={displayName}
+                className="w-12 h-12 rounded-full border-2 border-brand-500"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-gradient-neon flex items-center justify-center text-black font-bold text-lg">
+                {displayName?.charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+
+          {/* Player Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-bold text-foreground truncate">
+                {displayName}
+              </h3>
+              <Badge className={`${getRankBadgeColor(rank)} text-xs px-2 py-0.5`}>
+                #{rank}
+              </Badge>
             </div>
             
-            {type === 'all-time' && 'total_games' in entry && (
-              <>
-                <div className="flex items-center gap-1">
-                  <Target className="w-3 h-3 text-neon-magenta" />
-                  <span className="text-muted-foreground">
-                    {formatWinRate(entry.total_wins, entry.total_games)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Zap className="w-3 h-3 text-neon-green" />
-                  <span className="text-muted-foreground">
-                    {entry.best_streak} streak
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-neon-cyan" />
-                  <span className="text-muted-foreground">
-                    {formatTime(entry.average_time_ms)}
-                  </span>
-                </div>
-              </>
+            {isAllTime && entry.user?.handle && (
+              <p className="text-xs text-muted-foreground mb-2">@{entry.user.handle}</p>
             )}
 
-            {type !== 'all-time' && (
-              <>
-                <div className="flex items-center gap-1">
-                  <Target className="w-3 h-3 text-neon-magenta" />
-                  <span className="text-muted-foreground">
-                    {entry.games_played} games
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-neon-cyan" />
-                  <span className="text-muted-foreground">
-                    {formatTime(entry.avg_time)}
-                  </span>
-                </div>
-              </>
-            )}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              <div className="flex items-center gap-1">
+                <Trophy className="w-3 h-3 text-brand-500" />
+                <span className="text-muted-foreground">
+                  {totalPoints} pts
+                </span>
+              </div>
+              
+              {type === 'all-time' && isAllTime && (
+                <>
+                  <div className="flex items-center gap-1">
+                    <Target className="w-3 h-3 text-neon-magenta" />
+                    <span className="text-muted-foreground">
+                      {formatWinRate(entry.total_wins, entry.total_games)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-neon-green" />
+                    <span className="text-muted-foreground">
+                      {entry.best_streak} streak
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-neon-cyan" />
+                    <span className="text-muted-foreground">
+                      {formatTime(entry.average_time_ms)}
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {type !== 'all-time' && !isAllTime && (
+                <>
+                  <div className="flex items-center gap-1">
+                    <Target className="w-3 h-3 text-neon-magenta" />
+                    <span className="text-muted-foreground">
+                      {entry.games_played} games
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-neon-cyan" />
+                    <span className="text-muted-foreground">
+                      {formatTime(entry.avg_time)}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </motion.div>
-  );
+      </motion.div>
+    );
+  };
 
   if (isLoading) {
     return (

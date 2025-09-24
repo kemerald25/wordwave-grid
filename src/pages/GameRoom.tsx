@@ -77,7 +77,7 @@ export default function GameRoom() {
   const { notifyPlayerJoined, notifyGameStarted } = useGameNotifications();
 
   // Enhanced real-time synchronization
-  const { broadcastUpdate, forceRefresh, isConnected } = useGameSync({
+  const { broadcastUpdate, broadcastTyping, forceRefresh, isConnected } = useGameSync({
     roomId: roomId || "",
     onRoomUpdate: (updatedRoom) => {
       console.log("Room updated:", updatedRoom);
@@ -150,6 +150,18 @@ export default function GameRoom() {
     onGameStateChange: (gameState) => {
       // Handle complete game state changes
       console.log("Complete game state updated:", gameState);
+    },
+    onTypingUpdate: (isTyping, playerName) => {
+      // Handle typing indicators
+      if (isTyping && playerName) {
+        setTypingPlayers(prev => new Set([...prev, playerName]));
+      } else if (playerName) {
+        setTypingPlayers(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(playerName);
+          return newSet;
+        });
+      }
     },
   });
 
@@ -442,7 +454,7 @@ export default function GameRoom() {
     }
 
     setIsSubmitting(true);
-    broadcastTyping(false); // Stop typing indicator
+    broadcastTyping(false, appUser?.display_name); // Stop typing indicator
     const timeTaken = (room.round_time_seconds - timeLeft) * 1000;
 
     try {
@@ -606,12 +618,14 @@ export default function GameRoom() {
   };
 
   const handleInputChange = (value: string) => {
-    // Optional: Add typing indicators later
+    // Broadcast typing indicator
+    if (value.length > 0) {
+      broadcastTyping(true, appUser?.display_name);
+    } else {
+      broadcastTyping(false, appUser?.display_name);
+    }
   };
 
-  const broadcastTyping = (isTyping: boolean) => {
-    // Placeholder for typing indicator functionality
-  };
 
   const leaveRoom = async () => {
     if (!appUser) return;
@@ -732,59 +746,82 @@ export default function GameRoom() {
             )}
           </div>
 
-          {/* Center - Room info */}
-          <div className="text-center">
-            <h1 className="text-xl md:text-2xl font-bold text-brand-500 truncate max-w-[200px] md:max-w-none">
-              {room.name}
-            </h1>
-            <Badge
-              className={`${
-                room.status === "lobby"
-                  ? "bg-brand-500"
-                  : room.status === "in_game"
-                  ? "bg-neon-magenta"
-                  : "bg-muted"
-              } text-black font-medium`}
+          {/* Center - Room info with enhanced styling */}
+          <div className="text-center relative">
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              className="inline-block px-6 py-3 glass-panel rounded-2xl bg-gradient-to-r from-brand-500/10 to-neon-magenta/10 border border-brand-500/20 hover:border-brand-500/40 transition-all duration-300"
             >
-              {room.status === "lobby"
-                ? "Waiting"
-                : room.status === "in_game"
-                ? "Playing"
-                : "Finished"}
-            </Badge>
+              <h1 className="text-xl md:text-2xl font-bold text-brand-500 truncate max-w-[200px] md:max-w-none flex items-center gap-2 justify-center">
+                <Trophy className="w-5 h-5 text-neon-magenta" />
+                {room.name}
+              </h1>
+              <div className="flex items-center gap-2 justify-center mt-1">
+                <Badge
+                  className={`${
+                    room.status === "lobby"
+                      ? "bg-brand-500 hover:bg-brand-600"
+                      : room.status === "in_game"
+                      ? "bg-neon-magenta hover:bg-neon-magenta/80"
+                      : "bg-muted hover:bg-muted/80"
+                  } text-black font-medium transition-colors duration-200`}
+                >
+                  {room.status === "lobby"
+                    ? "🏃 Waiting"
+                    : room.status === "in_game"
+                    ? "🎮 Playing"
+                    : "🏁 Finished"}
+                </Badge>
+                <Badge variant="outline" className="border-neon-cyan/30 text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10 transition-all duration-200">
+                  Round {room.current_round || 1}/{room.rounds}
+                </Badge>
+              </div>
+            </motion.div>
           </div>
 
-          {/* Right side - Action buttons */}
+          {/* Right side - Action buttons with enhanced hover effects */}
           <div className="flex gap-2 justify-center md:justify-end">
-            <Button
-              onClick={handleShareGame}
-              variant="outline"
-              size="sm"
-              className="border-brand-500/30 hover:border-brand-500 hover:bg-brand-500/10"
-            >
-              <Share2 className="w-4 h-4 md:mr-2" />
-              <span className="hidden md:inline">Share</span>
-            </Button>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                onClick={handleShareGame}
+                variant="outline"
+                size="sm"
+                className="border-brand-500/30 hover:border-brand-500 hover:bg-brand-500/10 hover:shadow-neon transition-all duration-300 group"
+              >
+                <Share2 className="w-4 h-4 md:mr-2 group-hover:rotate-12 transition-transform duration-200" />
+                <span className="hidden md:inline">Share</span>
+              </Button>
+            </motion.div>
 
-            <Button
-              onClick={forceRefresh}
-              variant="outline"
-              size="sm"
-              className="border-neon-cyan/30 hover:border-neon-cyan hover:bg-neon-cyan/10"
-              title="Refresh game state"
-            >
-              🔄
-            </Button>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                onClick={forceRefresh}
+                variant="outline"
+                size="sm"
+                className="border-neon-cyan/30 hover:border-neon-cyan hover:bg-neon-cyan/10 hover:shadow-glow transition-all duration-300 group"
+                title="Refresh game state"
+              >
+                <motion.span
+                  animate={{ rotate: isConnected ? 0 : 360 }}
+                  transition={{ duration: 1, repeat: isConnected ? 0 : Infinity, ease: "linear" }}
+                  className="group-hover:rotate-180 transition-transform duration-300"
+                >
+                  🔄
+                </motion.span>
+              </Button>
+            </motion.div>
 
-            <Button
-              onClick={leaveRoom}
-              variant="outline"
-              size="sm"
-              className="border-destructive/30 hover:border-destructive hover:bg-destructive/10"
-            >
-              <span className="hidden sm:inline">Leave Room</span>
-              <span className="sm:hidden">Leave</span>
-            </Button>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                onClick={leaveRoom}
+                variant="outline"
+                size="sm"
+                className="border-destructive/30 hover:border-destructive hover:bg-destructive/10 hover:shadow-lg hover:shadow-destructive/20 transition-all duration-300"
+              >
+                <span className="hidden sm:inline">Leave Room</span>
+                <span className="sm:hidden">Leave</span>
+              </Button>
+            </motion.div>
           </div>
         </div>
 
@@ -833,13 +870,13 @@ export default function GameRoom() {
                           room.current_player_turn === player.user_id && (
                             <Zap className="w-4 h-4 text-brand-500 animate-pulse" />
                           )}
-                        {typingPlayers.has(player.user_id) && (
+                        {typingPlayers.has(player.display_name) && (
                           <motion.div
                             animate={{ opacity: [0.5, 1, 0.5] }}
                             transition={{ duration: 1, repeat: Infinity }}
-                            className="text-xs text-brand-500"
+                            className="text-xs text-brand-500 font-medium"
                           >
-                            typing...
+                            ⌨️ typing...
                           </motion.div>
                         )}
                       </div>
