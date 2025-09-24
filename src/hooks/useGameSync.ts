@@ -11,6 +11,7 @@ interface GameSyncOptions {
   onPlayerJoin?: (player: any) => void;
   onPlayerLeave?: (playerId: string) => void;
   onGameStateChange?: (state: any) => void;
+  onTypingUpdate?: (isTyping: boolean, playerName?: string) => void;
 }
 
 export function useGameSync({
@@ -20,7 +21,8 @@ export function useGameSync({
   onMoveUpdate,
   onPlayerJoin,
   onPlayerLeave,
-  onGameStateChange
+  onGameStateChange,
+  onTypingUpdate
 }: GameSyncOptions) {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -167,6 +169,14 @@ export function useGameSync({
             await fetchCompleteRoomData();
         }
       })
+      .on('broadcast', { event: 'typing_update' }, (payload) => {
+        console.log('⌨️ Typing update:', payload);
+        // Handle typing indicators
+        if (payload.payload?.type === 'typing_indicator') {
+          const { isTyping, playerName } = payload.payload.data;
+          onTypingUpdate?.(isTyping, playerName);
+        }
+      })
       .on('presence', { event: 'sync' }, () => {
         console.log('👁️ Presence sync');
       });
@@ -203,7 +213,7 @@ export function useGameSync({
     });
 
     channelRef.current = channel;
-  }, [roomId, onRoomUpdate, onPlayerUpdate, onMoveUpdate, onPlayerJoin, onPlayerLeave, onGameStateChange, fetchCompleteRoomData]);
+  }, [roomId, onRoomUpdate, onPlayerUpdate, onMoveUpdate, onPlayerJoin, onPlayerLeave, onGameStateChange, onTypingUpdate, fetchCompleteRoomData]);
 
   const broadcastUpdate = useCallback((type: string, data: any) => {
     if (channelRef.current && isConnectedRef.current) {
@@ -212,6 +222,20 @@ export function useGameSync({
         type: 'broadcast',
         event: 'game_update',
         payload: { type, data, timestamp: Date.now() }
+      });
+    }
+  }, []);
+
+  const broadcastTyping = useCallback((isTyping: boolean, playerName?: string) => {
+    if (channelRef.current && isConnectedRef.current) {
+      console.log(`⌨️ Broadcasting typing: ${isTyping} for ${playerName}`);
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'typing_update',
+        payload: { 
+          type: 'typing_indicator', 
+          data: { isTyping, playerName, timestamp: Date.now() }
+        }
       });
     }
   }, []);
@@ -236,6 +260,7 @@ export function useGameSync({
 
   return {
     broadcastUpdate,
+    broadcastTyping,
     forceRefresh,
     reconnect: setupRealtimeSync,
     isConnected: isConnectedRef.current

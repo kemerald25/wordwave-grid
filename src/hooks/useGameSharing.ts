@@ -43,7 +43,7 @@ export function useGameSharing() {
 
     composeCast({
       text: shareText,
-      embeds
+      embeds: embeds as [string]
     });
   }, [composeCast, appUser]);
 
@@ -78,7 +78,7 @@ export function useGameSharing() {
 
     composeCast({
       text: shareText,
-      embeds
+      embeds: embeds as [string]
     });
   }, [composeCast, appUser]);
 

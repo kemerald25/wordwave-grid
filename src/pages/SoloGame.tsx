@@ -259,7 +259,7 @@ export default function SoloGame() {
     startTurn();
   };
 
-  const endGame = async () => {
+const endGame = async () => {
     setGameOver(true);
     setIsPlaying(false);
     
@@ -268,14 +268,14 @@ export default function SoloGame() {
     }
 
     // Save stats to leaderboard if user is authenticated
-    if (appUser && !appUser.is_guest) {
+    if (appUser && stats.wordsPlayed > 0) {
       try {
         // Update or create leaderboard entry
         const { data: existingEntry } = await supabase
           .from('leaderboards')
           .select('*')
           .eq('user_id', appUser.id)
-          .single();
+          .maybeSingle();
 
         const gameTime = (Date.now() - gameStartTime) / 1000;
         
