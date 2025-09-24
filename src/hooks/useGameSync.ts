@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { toast } from "sonner";
@@ -15,40 +15,70 @@ interface GameSyncOptions {
   onTypingUpdate?: (isTyping: boolean, playerName?: string) => void;
 }
 
-export function useGameSync({
-  roomId,
-  onRoomUpdate,
-  onPlayerUpdate,
-  onMoveUpdate,
-  onPlayerJoin,
-  onPlayerLeave,
-  onGameStateChange,
-  onTypingUpdate,
-}: GameSyncOptions) {
+export function useGameSync(options: GameSyncOptions) {
+  const {
+    roomId,
+    onRoomUpdate,
+    onPlayerUpdate,
+    onMoveUpdate,
+    onPlayerJoin,
+    onPlayerLeave,
+    onGameStateChange,
+    onTypingUpdate,
+  } = options;
+
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isConnectedRef = useRef(false);
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isConnectedRef = useRef(false);
+  const isMountedRef = useRef(true);
   const lastFetchTimeRef = useRef<number>(0);
+  const [connectionState, setConnectionState] = useState<
+    "connecting" | "connected" | "disconnected" | "error"
+  >("disconnected");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Memoize callback refs to prevent unnecessary recreations
+  const stableCallbacks = useMemo(
+    () => ({
+      onRoomUpdate,
+      onPlayerUpdate,
+      onMoveUpdate,
+      onPlayerJoin,
+      onPlayerLeave,
+      onGameStateChange,
+      onTypingUpdate,
+    }),
+    [
+      onRoomUpdate,
+      onPlayerUpdate,
+      onMoveUpdate,
+      onPlayerJoin,
+      onPlayerLeave,
+      onGameStateChange,
+      onTypingUpdate,
+    ]
+  );
+
   // Debounced fetch to prevent multiple simultaneous calls
-  const debouncedFetchCompleteRoomData = useCallback(
+  const fetchCompleteRoomData = useCallback(
     async (immediate = false) => {
-      if (!roomId || isRefreshing) return;
+      if (!roomId || !isMountedRef.current || isRefreshing) {
+        return;
+      }
 
       const now = Date.now();
       const timeSinceLastFetch = now - lastFetchTimeRef.current;
 
-      // If not immediate and we fetched recently, debounce
-      if (!immediate && timeSinceLastFetch < 500) {
+      // Debounce logic
+      if (!immediate && timeSinceLastFetch < 300) {
         if (fetchTimeoutRef.current) {
           clearTimeout(fetchTimeoutRef.current);
         }
 
         fetchTimeoutRef.current = setTimeout(() => {
-          debouncedFetchCompleteRoomData(true);
-        }, 500 - timeSinceLastFetch);
+          fetchCompleteRoomData(true);
+        }, 300 - timeSinceLastFetch);
         return;
       }
 
@@ -56,7 +86,7 @@ export function useGameSync({
         setIsRefreshing(true);
         lastFetchTimeRef.current = now;
 
-        console.log("🔄 Fetching complete room data...");
+        console.log("🔄 Fetching room data for:", roomId);
 
         const { data: roomData, error } = await supabase
           .from("game_rooms")
@@ -79,9 +109,11 @@ export function useGameSync({
           .single();
 
         if (error) {
-          console.error("Error fetching room data:", error);
+          console.error("❌ Error fetching room data:", error);
           return;
         }
+
+        if (!isMountedRef.current) return;
 
         const typedRoom = {
           ...roomData,
@@ -91,189 +123,220 @@ export function useGameSync({
           ),
         };
 
-        console.log("✅ Room data fetched successfully:", typedRoom);
+        console.log("✅ Fresh room data:", {
+          id: typedRoom.id,
+          last_word: typedRoom.last_word,
+          current_turn: typedRoom.current_player_turn,
+          status: typedRoom.status,
+        });
 
-        // Call all update handlers with fresh data
-        onRoomUpdate?.(typedRoom);
-        onPlayerUpdate?.(typedRoom.players);
-        onGameStateChange?.(typedRoom);
+        // Update all callbacks with fresh data
+        stableCallbacks.onRoomUpdate?.(typedRoom);
+        stableCallbacks.onPlayerUpdate?.(typedRoom.players);
+        stableCallbacks.onGameStateChange?.(typedRoom);
       } catch (error) {
-        console.error("Error fetching complete room data:", error);
+        console.error("❌ Failed to fetch room data:", error);
       } finally {
-        setIsRefreshing(false);
+        if (isMountedRef.current) {
+          setIsRefreshing(false);
+        }
       }
     },
-    [roomId, onRoomUpdate, onPlayerUpdate, onGameStateChange, isRefreshing]
+    [roomId, isRefreshing, stableCallbacks]
   );
 
-  const setupRealtimeSync = useCallback(() => {
-    if (!roomId) return;
-
-    // Clean up existing channel
+  const cleanupChannel = useCallback(() => {
     if (channelRef.current) {
-      console.log("🧹 Cleaning up existing channel");
-      supabase.removeChannel(channelRef.current);
+      console.log("🧹 Cleaning up channel");
+      try {
+        supabase.removeChannel(channelRef.current);
+      } catch (error) {
+        console.warn("Warning cleaning up channel:", error);
+      }
+      channelRef.current = null;
+    }
+    isConnectedRef.current = false;
+    setConnectionState("disconnected");
+  }, []);
+
+  const setupRealtimeSync = useCallback(() => {
+    if (!roomId || !isMountedRef.current) {
+      console.log("⚠️ Skipping setup - no roomId or component unmounted");
+      return;
     }
 
-    console.log(`🔄 Setting up real-time sync for room: ${roomId}`);
+    // Clear any existing reconnect timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
 
-    const channel = supabase
-      .channel(`game-room-${roomId}`, {
-        config: {
-          presence: { key: roomId },
-          broadcast: { self: false, ack: false },
-        },
-      })
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "game_rooms",
-          filter: `id=eq.${roomId}`,
-        },
-        async (payload) => {
-          console.log(
-            "🎮 Real-time room update:",
-            payload.eventType,
-            payload.new
-          );
+    // Clean up existing channel
+    cleanupChannel();
 
-          // Always fetch fresh data on room changes - don't rely on payload data
-          // This ensures we get the most up-to-date state
-          await debouncedFetchCompleteRoomData();
+    console.log(`🚀 Setting up realtime sync for room: ${roomId}`);
+    setConnectionState("connecting");
+
+    const channelName = `game-room-${roomId}-${Date.now()}`; // Add timestamp to prevent conflicts
+
+    const channel = supabase.channel(channelName, {
+      config: {
+        presence: { key: roomId },
+        broadcast: { self: false, ack: false },
+      },
+    });
+
+    // Room changes
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "game_rooms",
+        filter: `id=eq.${roomId}`,
+      },
+      async (payload) => {
+        if (!isMountedRef.current) return;
+
+        console.log("🎮 Room change detected:", payload.eventType);
+        await fetchCompleteRoomData(true);
+      }
+    );
+
+    // Player changes
+    channel.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "game_players",
+        filter: `room_id=eq.${roomId}`,
+      },
+      async (payload) => {
+        if (!isMountedRef.current) return;
+
+        console.log("👥 Player change detected:", payload.eventType);
+
+        if (payload.eventType === "INSERT" && payload.new) {
+          stableCallbacks.onPlayerJoin?.(payload.new);
+          toast.success(`${payload.new.display_name} joined!`);
+        } else if (payload.eventType === "DELETE" && payload.old) {
+          stableCallbacks.onPlayerLeave?.(payload.old.id);
+          toast.info("Player left the game");
         }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "game_players",
-          filter: `room_id=eq.${roomId}`,
-        },
-        async (payload) => {
-          console.log(
-            "👥 Real-time player update:",
-            payload.eventType,
-            payload
-          );
 
-          if (payload.eventType === "INSERT" && payload.new) {
-            onPlayerJoin?.(payload.new);
-            toast.success(`${payload.new.display_name} joined the game!`);
-          } else if (payload.eventType === "DELETE" && payload.old) {
-            onPlayerLeave?.(payload.old.id);
-            toast.info("A player left the game");
-          }
+        await fetchCompleteRoomData(true);
+      }
+    );
 
-          // Fetch fresh data after player changes
-          await debouncedFetchCompleteRoomData();
+    // Move changes - this is crucial for word updates
+    channel.on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "game_moves",
+        filter: `room_id=eq.${roomId}`,
+      },
+      async (payload) => {
+        if (!isMountedRef.current) return;
+
+        console.log("🎯 New move detected:", payload.new);
+
+        // Notify about new move
+        if (payload.new) {
+          stableCallbacks.onMoveUpdate?.(payload.new);
         }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "game_moves",
-          filter: `room_id=eq.${roomId}`,
-        },
-        async (payload) => {
-          console.log("🎯 Real-time move update:", payload.new);
 
-          // Notify about the new move immediately
-          if (payload.new) {
-            onMoveUpdate?.(payload.new);
-          }
+        // Force immediate refresh to get updated room state
+        await fetchCompleteRoomData(true);
+      }
+    );
 
-          // Then fetch complete updated room state
-          // This ensures we get the updated last_word, current_turn, etc.
-          await debouncedFetchCompleteRoomData();
-        }
-      )
-      .on("broadcast", { event: "game_update" }, async (payload) => {
-        console.log("📡 Broadcast update:", payload.payload);
+    // Broadcast updates
+    channel.on("broadcast", { event: "game_update" }, async (payload) => {
+      if (!isMountedRef.current) return;
 
-        const { type, data } = payload.payload || {};
+      console.log("📡 Broadcast received:", payload.payload?.type);
+      await fetchCompleteRoomData(true);
+    });
 
-        switch (type) {
-          case "word_submitted":
-            console.log("📝 Word submitted broadcast received");
-            onMoveUpdate?.(data);
-            // Force immediate refresh for word submissions
-            await debouncedFetchCompleteRoomData(true);
-            break;
-          case "player_joined":
-            onPlayerJoin?.(data);
-            await debouncedFetchCompleteRoomData();
-            break;
-          case "turn_change":
-            console.log("🔄 Turn change broadcast received");
-            await debouncedFetchCompleteRoomData(true);
-            break;
-          case "force_refresh":
-            console.log("🔄 Force refresh broadcast received");
-            await debouncedFetchCompleteRoomData(true);
-            break;
-          default:
-            await debouncedFetchCompleteRoomData();
-        }
-      })
-      .on("broadcast", { event: "typing_update" }, (payload) => {
-        const { type, data } = payload.payload || {};
-        if (type === "typing_indicator") {
-          const { isTyping, playerName } = data || {};
-          onTypingUpdate?.(isTyping, playerName);
-        }
-      })
-      .on("presence", { event: "sync" }, () => {
-        console.log("👁️ Presence sync");
-      });
+    // Typing updates
+    channel.on("broadcast", { event: "typing_update" }, (payload) => {
+      if (!isMountedRef.current) return;
 
+      const { type, data } = payload.payload || {};
+      if (type === "typing_indicator") {
+        stableCallbacks.onTypingUpdate?.(data?.isTyping, data?.playerName);
+      }
+    });
+
+    // Subscribe and handle status changes
     channel.subscribe(async (status) => {
-      console.log(`📡 Realtime subscription status: ${status}`);
+      if (!isMountedRef.current) return;
 
-      if (status === "SUBSCRIBED") {
-        console.log("✅ Successfully subscribed to real-time updates");
-        isConnectedRef.current = true;
+      console.log(`📡 Connection status: ${status}`);
 
-        // Initial data fetch with immediate flag
-        await debouncedFetchCompleteRoomData(true);
+      switch (status) {
+        case "SUBSCRIBED":
+          console.log("✅ Successfully connected to realtime");
+          isConnectedRef.current = true;
+          setConnectionState("connected");
 
-        // Clear any reconnection timeout
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-          reconnectTimeoutRef.current = null;
-        }
-      } else if (status === "CHANNEL_ERROR") {
-        console.error("❌ Real-time subscription error");
-        isConnectedRef.current = false;
-        toast.error("Connection issue - attempting to reconnect...");
+          // Initial data fetch
+          await fetchCompleteRoomData(true);
+          break;
 
-        // Attempt to reconnect after a delay
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-        }
-        reconnectTimeoutRef.current = setTimeout(() => {
-          console.log("🔄 Attempting to reconnect...");
-          setupRealtimeSync();
-        }, 3000);
-      } else if (status === "CLOSED") {
-        console.log("🔌 Real-time connection closed");
-        isConnectedRef.current = false;
+        case "CHANNEL_ERROR":
+          console.error("❌ Channel error - will retry");
+          isConnectedRef.current = false;
+          setConnectionState("error");
+
+          // Don't immediately reconnect on error - wait a bit
+          if (isMountedRef.current) {
+            reconnectTimeoutRef.current = setTimeout(() => {
+              if (isMountedRef.current) {
+                console.log("🔄 Retrying connection after error...");
+                setupRealtimeSync();
+              }
+            }, 5000);
+          }
+          break;
+
+        case "CLOSED":
+          console.log("🔌 Connection closed");
+          isConnectedRef.current = false;
+          setConnectionState("disconnected");
+
+          // Only reconnect if we were previously connected and component is still mounted
+          if (isMountedRef.current && !reconnectTimeoutRef.current) {
+            reconnectTimeoutRef.current = setTimeout(() => {
+              if (isMountedRef.current) {
+                console.log("🔄 Reconnecting after close...");
+                setupRealtimeSync();
+              }
+            }, 2000);
+          }
+          break;
+
+        case "TIMED_OUT":
+          console.log("⏰ Connection timed out");
+          isConnectedRef.current = false;
+          setConnectionState("error");
+
+          if (isMountedRef.current) {
+            reconnectTimeoutRef.current = setTimeout(() => {
+              if (isMountedRef.current) {
+                setupRealtimeSync();
+              }
+            }, 1000);
+          }
+          break;
       }
     });
 
     channelRef.current = channel;
-  }, [
-    roomId,
-    debouncedFetchCompleteRoomData,
-    onPlayerJoin,
-    onPlayerLeave,
-    onMoveUpdate,
-    onTypingUpdate,
-  ]);
+  }, [roomId, cleanupChannel, fetchCompleteRoomData, stableCallbacks]);
 
   const broadcastUpdate = useCallback((type: string, data: any) => {
     if (channelRef.current && isConnectedRef.current) {
@@ -284,7 +347,7 @@ export function useGameSync({
         payload: { type, data, timestamp: Date.now() },
       });
     } else {
-      console.warn("⚠️ Cannot broadcast - channel not connected");
+      console.warn(`⚠️ Cannot broadcast ${type} - not connected`);
     }
   }, []);
 
@@ -305,53 +368,64 @@ export function useGameSync({
   );
 
   const forceRefresh = useCallback(async () => {
-    console.log("🔄 Force refreshing room data...");
+    console.log("🔄 Force refresh requested");
+    await fetchCompleteRoomData(true);
+  }, [fetchCompleteRoomData]);
 
-    // Broadcast to other clients that they should refresh too
-    broadcastUpdate("force_refresh", { roomId });
+  const reconnect = useCallback(() => {
+    console.log("🔄 Manual reconnect requested");
+    setupRealtimeSync();
+  }, [setupRealtimeSync]);
 
-    // Force immediate refresh
-    await debouncedFetchCompleteRoomData(true);
-  }, [debouncedFetchCompleteRoomData, broadcastUpdate, roomId]);
-
-  // Cleanup function
+  // Component mount/unmount tracking
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      if (fetchTimeoutRef.current) {
-        clearTimeout(fetchTimeoutRef.current);
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (channelRef.current) {
-        console.log("🧹 Cleaning up channel on unmount");
-        supabase.removeChannel(channelRef.current);
-      }
+      isMountedRef.current = false;
     };
   }, []);
 
-  // Setup effect
+  // Main setup effect - only depends on roomId
   useEffect(() => {
-    if (roomId) {
+    if (roomId && isMountedRef.current) {
       setupRealtimeSync();
     }
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+      // Cleanup on roomId change or unmount
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
+        fetchTimeoutRef.current = null;
+      }
+      cleanupChannel();
+    };
+  }, [roomId]); // Only depend on roomId to prevent unnecessary reconnections
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
+      }
+      cleanupChannel();
     };
-  }, [roomId, setupRealtimeSync]);
+  }, [cleanupChannel]);
 
   return {
     broadcastUpdate,
     broadcastTyping,
     forceRefresh,
-    reconnect: setupRealtimeSync,
+    reconnect,
     isConnected: isConnectedRef.current,
+    connectionState,
     isRefreshing,
   };
 }
