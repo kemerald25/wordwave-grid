@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, Users, Trophy, Gamepad2 } from 'lucide-react';
+import { Home, Users, Trophy, Gamepad2, Target } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 

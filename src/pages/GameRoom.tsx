@@ -689,30 +689,37 @@ export default function GameRoom() {
     <Layout showHeader={false}>
       <div className="min-h-screen p-4 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <Button
-            onClick={() => navigate("/lobby")}
-            variant="ghost"
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Lobby
-          </Button>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          {/* Left side - Back button and connection status */}
+          <div className="flex items-center justify-between md:justify-start md:gap-4">
+            <Button
+              onClick={() => navigate("/lobby")}
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              <span className="hidden sm:inline">Back to Lobby</span>
+              <span className="sm:hidden">Back</span>
+            </Button>
 
-          {/* Connection Status */}
-          {!isConnected && (
-            <div className="flex items-center gap-2 text-yellow-500">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                className="w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full"
-              />
-              <span className="text-sm">Reconnecting...</span>
-            </div>
-          )}
+            {/* Connection Status */}
+            {!isConnected && (
+              <div className="flex items-center gap-2 text-yellow-500">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full"
+                />
+                <span className="text-sm hidden sm:inline">Reconnecting...</span>
+              </div>
+            )}
+          </div>
 
+          {/* Center - Room info */}
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-brand-500">{room.name}</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-brand-500 truncate max-w-[200px] md:max-w-none">
+              {room.name}
+            </h1>
             <Badge
               className={`${
                 room.status === "lobby"
@@ -730,19 +737,22 @@ export default function GameRoom() {
             </Badge>
           </div>
 
-          <div className="flex gap-2">
+          {/* Right side - Action buttons */}
+          <div className="flex gap-2 justify-center md:justify-end">
             <Button
               onClick={handleShareGame}
               variant="outline"
+              size="sm"
               className="border-brand-500/30 hover:border-brand-500 hover:bg-brand-500/10"
             >
-              <Share2 className="w-4 h-4 mr-2" />
-              Share
+              <Share2 className="w-4 h-4 md:mr-2" />
+              <span className="hidden md:inline">Share</span>
             </Button>
             
             <Button
               onClick={forceRefresh}
               variant="outline"
+              size="sm"
               className="border-neon-cyan/30 hover:border-neon-cyan hover:bg-neon-cyan/10"
               title="Refresh game state"
             >
@@ -752,11 +762,14 @@ export default function GameRoom() {
             <Button
               onClick={leaveRoom}
               variant="outline"
+              size="sm"
               className="border-destructive/30 hover:border-destructive hover:bg-destructive/10"
             >
-              Leave Room
+              <span className="hidden sm:inline">Leave Room</span>
+              <span className="sm:hidden">Leave</span>
             </Button>
           </div>
+        </div>
         </div>
 
         {/* Game Area */}
